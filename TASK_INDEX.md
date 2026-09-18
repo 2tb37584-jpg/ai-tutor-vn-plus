@@ -7,7 +7,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M00-01 | Baseline | Run local baseline and capture failures | DONE | No |
 | M00-02 | Baseline | Establish baseline commit and test commands | DONE | No |
 | M05-01 | Tutor Engine | Define deterministic tutor state model | DONE | Yes, small |
-| M05-02 | Tutor Engine | Implement state transition rules | ACTIVE | Yes |
+| M05-02 | Tutor Engine | Implement state transition rules | DONE | Yes |
 | M05-03 | Tutor Engine | Add hint escalation policy | BACKLOG | Yes |
 | M05-04 | Tutor Engine | Add answer-leakage guard | BACKLOG | Yes |
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | BACKLOG | Mostly ChatGPT |
