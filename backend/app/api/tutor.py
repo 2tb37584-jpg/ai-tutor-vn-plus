@@ -50,6 +50,7 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
         title=analysis.normalized_problem[:220] or "Tutoring session",
         normalized_problem=analysis.normalized_problem,
         primary_skill=primary_skill,
+        internal_expected_answer=analysis.expected_answer,
     )
     db.add(session)
     db.flush()

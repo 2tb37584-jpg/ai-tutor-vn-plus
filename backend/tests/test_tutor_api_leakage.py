@@ -68,6 +68,9 @@ def test_start_exposes_only_public_analysis_fields(monkeypatch: pytest.MonkeyPat
     )
     serialized = StartTutorResponse.model_validate(response).model_dump(mode="json")
 
+    assert db.session is not None
+    assert db.session.internal_expected_answer == "SECRET_FINAL_ANSWER_42"
+    assert db.session.current_state == "ask_attempt"
     assert fake_ai.first_turn_analysis is internal_analysis
     assert internal_analysis.expected_answer == "SECRET_FINAL_ANSWER_42"
     assert internal_analysis.verification_notes == "SECRET_INTERNAL_NOTE"
@@ -81,6 +84,7 @@ def test_start_exposes_only_public_analysis_fields(monkeypatch: pytest.MonkeyPat
     }
     assert "expected_answer" not in serialized["analysis"]
     assert "verification_notes" not in serialized["analysis"]
+    assert "internal_expected_answer" not in str(serialized)
     assert "SECRET_FINAL_ANSWER_42" not in str(serialized)
     assert "SECRET_INTERNAL_NOTE" not in str(serialized)
     assert serialized["analysis"]["normalized_problem"] == "Solve x + 1 = 2"
