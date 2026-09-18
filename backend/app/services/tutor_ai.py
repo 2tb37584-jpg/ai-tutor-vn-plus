@@ -1,7 +1,8 @@
 from __future__ import annotations
 from openai import OpenAI
 from app.core.config import get_settings
-from app.schemas.tutor import ProblemAnalysis, TutorTurn
+from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTransitionEvent, TutorTransitionInput, TutorTurn
+from app.services.tutor_state import transition_tutor_state
 
 ANALYZE_PROMPT = """
 You are the diagnostic layer of a Vietnamese tutoring system.
@@ -64,12 +65,13 @@ class TutorAI:
 
     def first_turn(self, analysis: ProblemAnalysis, grade: int | None) -> TutorTurn:
         if not self.client:
-            return TutorTurn(
+            turn = TutorTurn(
                 message="Em hãy nói cho thầy/cô biết: em đã hiểu đề bài yêu cầu tìm gì chưa? Hãy thử nêu bước đầu tiên em định làm.",
                 next_action="ask_student",
                 hint_level=0,
                 skill_tags=analysis.skills,
             )
+            return self._with_first_turn_state(turn)
 
         context = (
             f"Grade: {grade or 'unknown'}\n"
@@ -86,16 +88,25 @@ class TutorAI:
             ],
             text_format=TutorTurn,
         )
-        return response.output_parsed
+        return self._with_first_turn_state(response.output_parsed)
 
-    def continue_turn(self, problem: str, skill: str, history: list[tuple[str, str]], student_message: str) -> TutorTurn:
+    def continue_turn(
+        self,
+        problem: str,
+        skill: str,
+        history: list[tuple[str, str]],
+        student_message: str,
+        *,
+        current_state: TutorState = TutorState.ASK_ATTEMPT,
+    ) -> TutorTurn:
         if not self.client:
-            return TutorTurn(
+            turn = TutorTurn(
                 message="Em thử giải thích vì sao em chọn bước đó. Nếu chưa chắc, hãy viết điều kiện hoặc công thức liên quan trước.",
                 next_action="ask_student",
                 hint_level=1,
                 skill_tags=[skill],
             )
+            return self._with_continued_turn_state(turn, current_state)
 
         transcript = "\n".join(f"{role}: {content}" for role, content in history[-12:])
         prompt = (
@@ -111,4 +122,29 @@ class TutorAI:
             ],
             text_format=TutorTurn,
         )
-        return response.output_parsed
+        return self._with_continued_turn_state(response.output_parsed, current_state)
+
+    @staticmethod
+    def _with_first_turn_state(turn: TutorTurn) -> TutorTurn:
+        state = transition_tutor_state(
+            TutorTransitionInput(
+                state=TutorState.DIAGNOSE,
+                event=TutorTransitionEvent.ANALYSIS_READY,
+            )
+        )
+        return turn.model_copy(update={"state": state})
+
+    @staticmethod
+    def _with_continued_turn_state(turn: TutorTurn, current_state: TutorState) -> TutorTurn:
+        event = None
+        if current_state in {TutorState.ASK_ATTEMPT, TutorState.HINT_1, TutorState.HINT_2}:
+            if turn.likely_correct is True:
+                event = TutorTransitionEvent.ATTEMPT_CORRECT
+            elif turn.likely_correct is False:
+                event = TutorTransitionEvent.ATTEMPT_INCORRECT
+
+        if event is None:
+            return turn.model_copy(update={"state": current_state})
+
+        state = transition_tutor_state(TutorTransitionInput(state=current_state, event=event))
+        return turn.model_copy(update={"state": state})

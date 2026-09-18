@@ -42,6 +42,7 @@ class ProblemAnalysis(BaseModel):
 
 class TutorTurn(BaseModel):
     message: str
+    state: TutorState = TutorState.DIAGNOSE
     next_action: str = "ask_student"
     hint_level: int = Field(default=0, ge=0, le=5)
     skill_tags: list[str] = Field(default_factory=list)
