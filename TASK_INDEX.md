@@ -14,7 +14,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M05-02A1 | Tutor Engine | Add persisted tutor session state | DONE | Yes, small |
 | M05-02A2 | Tutor Engine | Wire persisted state through tutor API | DONE | Yes, small |
 | M05-03 | Tutor Engine | Add state-aware hint generation policy | DONE | Yes |
-| M05-04A | Tutor Engine | Hide internal solution data from student API | ACTIVE | Yes, small |
+| M05-04A | Tutor Engine | Hide internal solution data from student API | DONE | Yes, small |
 | M05-04B | Tutor Engine | Add runtime answer-leakage guard | BACKLOG | Yes |
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | BACKLOG | Mostly ChatGPT |
 | M07-02 | Skill Graph | Implement controlled skill registry | BACKLOG | Yes |
