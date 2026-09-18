@@ -8,7 +8,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M00-02 | Baseline | Establish baseline commit and test commands | DONE | No |
 | M00-03 | Baseline | Establish Alembic migration baseline | DONE | Yes, small |
 | M00-04 | Baseline | Adopt existing dev DB into Alembic baseline | DONE | No |
-| M00-05 | Baseline | Switch runtime schema workflow to Alembic | ACTIVE | Yes, small |
+| M00-05 | Baseline | Switch runtime schema workflow to Alembic | DONE | Yes, small |
 | M05-01 | Tutor Engine | Define deterministic tutor state model | DONE | Yes, small |
 | M05-02 | Tutor Engine | Implement state transition rules | DONE | Yes |
 | M05-03 | Tutor Engine | Add hint escalation policy | BACKLOG | Yes |
