@@ -29,6 +29,50 @@ Rules:
 - `reveal_final_answer` must reflect whether your message actually reveals it.
 """.strip()
 
+_STATE_HINT_LEVELS = {
+    TutorState.ASK_ATTEMPT: 0,
+    TutorState.HINT_1: 1,
+    TutorState.HINT_2: 2,
+    TutorState.EXPLAIN_STEP: 3,
+}
+
+_ATTEMPT_STATES = frozenset({TutorState.ASK_ATTEMPT, TutorState.HINT_1, TutorState.HINT_2})
+
+_ATTEMPT_RESPONSE_POLICY = (
+    "First judge the student's newest attempt when it can reasonably be judged. "
+    "If it is clearly correct, set likely_correct=True; do not escalate the hint or explain "
+    "another solution step. Acknowledge the reasoning and ask the student to verify or check it. "
+    "If it is clearly incorrect, set likely_correct=False and then follow the current-state "
+    "assistance policy below. "
+    "If correctness cannot reasonably be judged, set likely_correct=None; ask one focused "
+    "clarification question and do not escalate assistance."
+)
+
+_STATE_GENERATION_POLICIES = {
+    TutorState.ASK_ATTEMPT: (
+        "Give first-level help: one small conceptual cue or one focused question. "
+        "Do not perform the algebraic or procedural step for the student. "
+        "Leave meaningful work for the student."
+    ),
+    TutorState.HINT_1: (
+        "Give a stronger, more concrete scaffold than first-level help. Identify the relevant "
+        "operation, relation, formula, or sub-step, but do not execute it for the student. "
+        "Leave meaningful work for the student."
+    ),
+    TutorState.HINT_2: (
+        "Explain exactly one useful intermediate step. Stop after that step and ask the student "
+        "to continue. Do not provide a complete worked solution."
+    ),
+    TutorState.EXPLAIN_STEP: (
+        "Focus on the already introduced step: ask the student to apply or justify it. Do not add "
+        "further worked steps or provide a complete solution."
+    ),
+    TutorState.VERIFY: "Ask the student to verify the reasoning or result without introducing a new solution.",
+    TutorState.TRANSFER: "Ask the student to apply the learned idea to a closely related case.",
+    TutorState.COMPLETE: "Acknowledge completion and invite a brief reflection on the strategy used.",
+    TutorState.DIAGNOSE: "Ask one focused question to clarify the student's understanding of the problem.",
+}
+
 
 class TutorAI:
     def __init__(self):
@@ -109,8 +153,19 @@ class TutorAI:
             return self._with_continued_turn_state(turn, current_state)
 
         transcript = "\n".join(f"{role}: {content}" for role, content in history[-12:])
+        generation_policy = self._generation_policy(current_state)
+        if current_state in _ATTEMPT_STATES:
+            policy_instructions = (
+                f"Attempt response policy: {_ATTEMPT_RESPONSE_POLICY}\n"
+                f"Current-state assistance policy (only for a clearly incorrect attempt): "
+                f"{generation_policy}"
+            )
+        else:
+            policy_instructions = f"Current-state generation policy: {generation_policy}"
         prompt = (
-            f"Problem: {problem}\nPrimary skill: {skill}\n\n"
+            f"Problem: {problem}\nPrimary skill: {skill}\n"
+            f"Current tutor state: {current_state.value}\n"
+            f"{policy_instructions}\n\n"
             f"Recent transcript:\n{transcript}\n\n"
             f"Student's newest message: {student_message}"
         )
@@ -132,19 +187,32 @@ class TutorAI:
                 event=TutorTransitionEvent.ANALYSIS_READY,
             )
         )
-        return turn.model_copy(update={"state": state})
+        return TutorAI._normalize_turn(turn, state)
 
     @staticmethod
     def _with_continued_turn_state(turn: TutorTurn, current_state: TutorState) -> TutorTurn:
         event = None
-        if current_state in {TutorState.ASK_ATTEMPT, TutorState.HINT_1, TutorState.HINT_2}:
+        if current_state in _ATTEMPT_STATES:
             if turn.likely_correct is True:
                 event = TutorTransitionEvent.ATTEMPT_CORRECT
             elif turn.likely_correct is False:
                 event = TutorTransitionEvent.ATTEMPT_INCORRECT
 
         if event is None:
-            return turn.model_copy(update={"state": current_state})
+            return TutorAI._normalize_turn(turn, current_state)
 
         state = transition_tutor_state(TutorTransitionInput(state=current_state, event=event))
-        return turn.model_copy(update={"state": state})
+        return TutorAI._normalize_turn(turn, state)
+
+    @staticmethod
+    def _generation_policy(current_state: TutorState) -> str:
+        return _STATE_GENERATION_POLICIES[current_state]
+
+    @staticmethod
+    def _normalize_turn(turn: TutorTurn, state: TutorState) -> TutorTurn:
+        return turn.model_copy(
+            update={
+                "state": state,
+                "hint_level": _STATE_HINT_LEVELS.get(state, 0),
+            }
+        )
