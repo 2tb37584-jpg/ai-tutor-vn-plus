@@ -12,12 +12,23 @@ from app.schemas.tutor import (
     TutorReplyResponse,
     AttemptRequest,
     TutorState,
+    TutorTurn,
 )
+from app.services.answer_leakage import detects_final_answer_leak
 from app.services.mastery import record_attempt
 from app.services.tutor_ai import TutorAI
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
+_SAFE_TUTOR_FALLBACK = "Em hãy tiếp tục từ bước em đang làm và giải thích vì sao bước đó hợp lý. Thầy/cô sẽ giúp em kiểm tra."
+
+
+def _guard_tutor_turn(turn: TutorTurn, expected_answer: str) -> TutorTurn:
+    if turn.state is TutorState.COMPLETE:
+        return turn
+    if not detects_final_answer_leak(turn.message, expected_answer, turn.reveal_final_answer):
+        return turn
+    return turn.model_copy(update={"message": _SAFE_TUTOR_FALLBACK, "reveal_final_answer": False})
 
 
 def owned_student(db: Session, user: User, student_id: int) -> Student:
@@ -56,6 +67,7 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
     db.flush()
 
     tutor_turn = ai.first_turn(analysis, student.grade)
+    tutor_turn = _guard_tutor_turn(tutor_turn, analysis.expected_answer)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
@@ -94,6 +106,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
         student_message=payload.student_message,
         current_state=current_state,
     )
+    tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
