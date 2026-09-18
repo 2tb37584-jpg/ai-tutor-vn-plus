@@ -1,0 +1,251 @@
+{
+  "version": "v1",
+  "scope": "grade_8_algebra_initial_slice",
+  "subject": "math",
+  "reserved_non_mastery_labels": [
+    "general.problem_solving"
+  ],
+  "skills": [
+    {
+      "code": "arithmetic.signed_number_operations",
+      "name_vi": "Thực hiện phép tính với số có dấu",
+      "subject": "math",
+      "grade_min": 6,
+      "grade_max": 8,
+      "prerequisites": [],
+      "aliases": [
+        "phép tính số có dấu",
+        "tính toán số âm và số dương",
+        "signed number operations"
+      ],
+      "observable_mastery_evidence": [
+        "Thực hiện đúng phép cộng, trừ, nhân và chia với số dương và số âm trong các bước biến đổi.",
+        "Giữ đúng dấu khi thay thế hoặc tính giá trị các biểu thức số đơn giản."
+      ],
+      "common_misconceptions": [
+        "signed_number_sign_error",
+        "negative_subtraction_error"
+      ],
+      "verifier_family": "numeric"
+    },
+    {
+      "code": "algebra.expression.distributive_property",
+      "name_vi": "Áp dụng tính chất phân phối",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "arithmetic.signed_number_operations"
+      ],
+      "aliases": [
+        "tính chất phân phối",
+        "phá ngoặc",
+        "distributive property"
+      ],
+      "observable_mastery_evidence": [
+        "Khai triển đúng dạng a(b+c) và a(b-c), bao gồm trường hợp hệ số âm.",
+        "Giữ đúng hệ số và dấu của từng hạng tử sau khi bỏ ngoặc."
+      ],
+      "common_misconceptions": [
+        "distribution_missing_term",
+        "distribution_sign_error"
+      ],
+      "verifier_family": "expression_equivalence"
+    },
+    {
+      "code": "algebra.expression.combine_like_terms",
+      "name_vi": "Thu gọn hạng tử đồng dạng",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "arithmetic.signed_number_operations"
+      ],
+      "aliases": [
+        "hạng tử đồng dạng",
+        "gom hạng tử đồng dạng",
+        "combine like terms"
+      ],
+      "observable_mastery_evidence": [
+        "Nhận ra các hạng tử đồng dạng và cộng hoặc trừ đúng các hệ số của chúng.",
+        "Không gộp các hạng tử khác biến hoặc khác bậc như thể chúng đồng dạng."
+      ],
+      "common_misconceptions": [
+        "combine_unlike_terms",
+        "coefficient_sign_error"
+      ],
+      "verifier_family": "expression_equivalence"
+    },
+    {
+      "code": "algebra.expression.simplify",
+      "name_vi": "Thu gọn biểu thức đại số",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.expression.distributive_property",
+        "algebra.expression.combine_like_terms"
+      ],
+      "aliases": [
+        "thu gọn biểu thức",
+        "rút gọn biểu thức đại số",
+        "simplify algebraic expression"
+      ],
+      "observable_mastery_evidence": [
+        "Biến đổi một biểu thức về dạng gọn hơn bằng các bước tương đương hợp lệ.",
+        "Kết hợp đúng việc bỏ ngoặc và thu gọn hạng tử đồng dạng."
+      ],
+      "common_misconceptions": [
+        "incomplete_simplification",
+        "non_equivalent_expression_step"
+      ],
+      "verifier_family": "expression_equivalence"
+    },
+    {
+      "code": "algebra.equation.equivalent_transform",
+      "name_vi": "Biến đổi tương đương phương trình",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.expression.simplify"
+      ],
+      "aliases": [
+        "biến đổi tương đương phương trình",
+        "giữ cân bằng phương trình",
+        "equivalent equation transformation"
+      ],
+      "observable_mastery_evidence": [
+        "Thực hiện cùng một phép biến đổi hợp lệ trên hai vế hoặc dùng bước tương đương giữ nguyên tập nghiệm.",
+        "Có thể giải thích vì sao bước biến đổi không làm thay đổi nghiệm của phương trình."
+      ],
+      "common_misconceptions": [
+        "one_sided_equation_operation",
+        "invalid_equation_transformation"
+      ],
+      "verifier_family": "linear_equation"
+    },
+    {
+      "code": "algebra.linear_equation",
+      "name_vi": "Giải phương trình bậc nhất một ẩn",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.equation.equivalent_transform"
+      ],
+      "aliases": [
+        "phương trình bậc nhất một ẩn",
+        "giải phương trình tuyến tính",
+        "linear equation"
+      ],
+      "observable_mastery_evidence": [
+        "Giải đúng phương trình bậc nhất một ẩn bằng chuỗi bước tương đương hợp lệ.",
+        "Kiểm tra được nghiệm bằng cách thay lại vào phương trình ban đầu khi cần."
+      ],
+      "common_misconceptions": [
+        "incorrect_variable_isolation",
+        "equation_sign_transfer_error"
+      ],
+      "verifier_family": "linear_equation"
+    },
+    {
+      "code": "algebra.identity.basic",
+      "name_vi": "Nhận biết và vận dụng hằng đẳng thức cơ bản",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.expression.distributive_property",
+        "algebra.expression.combine_like_terms"
+      ],
+      "aliases": [
+        "hằng đẳng thức đáng nhớ",
+        "hằng đẳng thức cơ bản",
+        "basic algebraic identities"
+      ],
+      "observable_mastery_evidence": [
+        "Nhận dạng đúng một hằng đẳng thức cơ bản khi biểu thức xuất hiện dưới dạng phù hợp.",
+        "Khai triển hoặc thu gọn bằng hằng đẳng thức mà vẫn giữ biểu thức tương đương."
+      ],
+      "common_misconceptions": [
+        "identity_pattern_mismatch",
+        "identity_middle_term_error"
+      ],
+      "verifier_family": "expression_equivalence"
+    },
+    {
+      "code": "algebra.factorization",
+      "name_vi": "Phân tích đa thức thành nhân tử",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.expression.simplify"
+      ],
+      "aliases": [
+        "phân tích đa thức thành nhân tử",
+        "phân tích nhân tử",
+        "factorization"
+      ],
+      "observable_mastery_evidence": [
+        "Biến đổi đa thức thành tích các nhân tử sao cho khai triển ngược lại cho biểu thức ban đầu.",
+        "Chọn được cách phân tích phù hợp cho các dạng v1 đã hỗ trợ."
+      ],
+      "common_misconceptions": [
+        "factorization_not_equivalent",
+        "factor_pair_sign_error"
+      ],
+      "verifier_family": "factorization"
+    },
+    {
+      "code": "algebra.rational_expression.domain",
+      "name_vi": "Tìm điều kiện xác định của phân thức",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.linear_equation"
+      ],
+      "aliases": [
+        "điều kiện xác định của phân thức",
+        "đkxđ phân thức",
+        "rational expression domain"
+      ],
+      "observable_mastery_evidence": [
+        "Xác định đúng điều kiện mẫu số khác 0 và giải điều kiện loại trừ trong phạm vi v1.",
+        "Biểu diễn đúng các giá trị bị loại khỏi miền xác định."
+      ],
+      "common_misconceptions": [
+        "denominator_zero_allowed",
+        "domain_exclusion_sign_error"
+      ],
+      "verifier_family": "domain_condition"
+    },
+    {
+      "code": "algebra.rational_expression.simplify",
+      "name_vi": "Rút gọn phân thức đại số",
+      "subject": "math",
+      "grade_min": 8,
+      "grade_max": 8,
+      "prerequisites": [
+        "algebra.factorization",
+        "algebra.rational_expression.domain"
+      ],
+      "aliases": [
+        "rút gọn phân thức",
+        "rút gọn phân thức đại số",
+        "simplify rational expression"
+      ],
+      "observable_mastery_evidence": [
+        "Phân tích và khử đúng các nhân tử chung hợp lệ để rút gọn phân thức.",
+        "Giữ lại các điều kiện xác định cần thiết sau khi rút gọn."
+      ],
+      "common_misconceptions": [
+        "cancel_non_factor_terms",
+        "lost_domain_restriction"
+      ],
+      "verifier_family": "manual_or_future"
+    }
+  ]
+}
