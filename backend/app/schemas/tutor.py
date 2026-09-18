@@ -40,6 +40,15 @@ class ProblemAnalysis(BaseModel):
     confidence: float = Field(default=0.5, ge=0, le=1)
 
 
+class StudentProblemAnalysis(BaseModel):
+    normalized_problem: str
+    subject: str
+    grade_band: str
+    skills: list[str]
+    prerequisites: list[str]
+    confidence: float = Field(ge=0, le=1)
+
+
 class TutorTurn(BaseModel):
     message: str
     state: TutorState = TutorState.DIAGNOSE
@@ -59,7 +68,7 @@ class StartTutorRequest(BaseModel):
 
 class StartTutorResponse(BaseModel):
     session_id: int
-    analysis: ProblemAnalysis
+    analysis: StudentProblemAnalysis
     tutor: TutorTurn
 
 

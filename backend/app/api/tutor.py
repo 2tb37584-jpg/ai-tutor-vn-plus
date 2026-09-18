@@ -7,6 +7,7 @@ from app.models import User, Student, TutorSession, TutorMessage, Attempt
 from app.schemas.tutor import (
     StartTutorRequest,
     StartTutorResponse,
+    StudentProblemAnalysis,
     TutorReplyRequest,
     TutorReplyResponse,
     AttemptRequest,
@@ -57,7 +58,15 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
-    return StartTutorResponse(session_id=session.id, analysis=analysis, tutor=tutor_turn)
+    public_analysis = StudentProblemAnalysis(
+        normalized_problem=analysis.normalized_problem,
+        subject=analysis.subject,
+        grade_band=analysis.grade_band,
+        skills=analysis.skills,
+        prerequisites=analysis.prerequisites,
+        confidence=analysis.confidence,
+    )
+    return StartTutorResponse(session_id=session.id, analysis=public_analysis, tutor=tutor_turn)
 
 
 @router.post("/reply", response_model=TutorReplyResponse)

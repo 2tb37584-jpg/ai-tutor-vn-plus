@@ -13,7 +13,6 @@ type StartResponse = {
     subject: string;
     skills: string[];
     confidence: number;
-    verification_notes: string;
   };
   tutor: { message: string; skill_tags: string[] };
 };
