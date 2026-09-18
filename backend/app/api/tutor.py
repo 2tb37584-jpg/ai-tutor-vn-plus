@@ -10,6 +10,7 @@ from app.schemas.tutor import (
     TutorReplyRequest,
     TutorReplyResponse,
     AttemptRequest,
+    TutorState,
 )
 from app.services.mastery import record_attempt
 from app.services.tutor_ai import TutorAI
@@ -53,6 +54,7 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
     db.flush()
 
     tutor_turn = ai.first_turn(analysis, student.grade)
+    session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
     return StartTutorResponse(session_id=session.id, analysis=analysis, tutor=tutor_turn)
@@ -61,6 +63,11 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
 @router.post("/reply", response_model=TutorReplyResponse)
 def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     session = owned_session(db, user, payload.session_id)
+    try:
+        current_state = TutorState(session.current_state)
+    except ValueError as error:
+        raise HTTPException(status_code=500, detail="Tutor session is unavailable") from error
+
     previous = list(
         db.scalars(
             select(TutorMessage)
@@ -75,7 +82,9 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
         skill=session.primary_skill,
         history=history,
         student_message=payload.student_message,
+        current_state=current_state,
     )
+    session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
     return TutorReplyResponse(tutor=tutor_turn)
