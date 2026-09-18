@@ -58,6 +58,7 @@ class TutorSession(Base):
     normalized_problem: Mapped[str] = mapped_column(Text, default="")
     primary_skill: Mapped[str] = mapped_column(String(120), default="general")
     status: Mapped[str] = mapped_column(String(32), default="active")
+    current_state: Mapped[str] = mapped_column(String(32), nullable=False, default="ask_attempt")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
