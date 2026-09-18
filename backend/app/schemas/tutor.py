@@ -1,4 +1,32 @@
+from enum import Enum
+
 from pydantic import BaseModel, Field
+
+
+class TutorState(str, Enum):
+    DIAGNOSE = "diagnose"
+    ASK_ATTEMPT = "ask_attempt"
+    HINT_1 = "hint_1"
+    HINT_2 = "hint_2"
+    EXPLAIN_STEP = "explain_step"
+    VERIFY = "verify"
+    TRANSFER = "transfer"
+    COMPLETE = "complete"
+
+
+class TutorTransitionEvent(str, Enum):
+    ANALYSIS_READY = "analysis_ready"
+    ATTEMPT_CORRECT = "attempt_correct"
+    ATTEMPT_INCORRECT = "attempt_incorrect"
+    STEP_EXPLAINED = "step_explained"
+    VERIFIED = "verified"
+    VERIFICATION_FAILED = "verification_failed"
+    TRANSFER_COMPLETED = "transfer_completed"
+
+
+class TutorTransitionInput(BaseModel):
+    state: TutorState
+    event: TutorTransitionEvent
 
 
 class ProblemAnalysis(BaseModel):
