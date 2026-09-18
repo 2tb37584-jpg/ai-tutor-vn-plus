@@ -1,0 +1,29 @@
+[project]
+name = "ai-tutor-vn-backend"
+version = "0.1.0"
+description = "Backend for AI Tutor VN"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.141,<0.142",
+  "uvicorn[standard]>=0.35,<1",
+  "sqlalchemy>=2.0,<3",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.10,<3",
+  "pyjwt>=2.10,<3",
+  "pwdlib[argon2]>=0.2,<1",
+  "email-validator>=2.2,<3",
+  "python-multipart>=0.0.20,<1",
+  "openai>=1.99,<3",
+  "sympy>=1.14,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.4,<9",
+  "httpx>=0.28,<1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
