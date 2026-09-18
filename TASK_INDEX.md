@@ -5,8 +5,8 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | ID | Module | Task | Status | Codex? |
 |---|---|---|---|---|
 | M00-01 | Baseline | Run local baseline and capture failures | DONE | No |
-| M00-02 | Baseline | Establish baseline commit and test commands | ACTIVE | No |
-| M05-01 | Tutor Engine | Define deterministic tutor state model | READY | Yes, small |
+| M00-02 | Baseline | Establish baseline commit and test commands | DONE | No |
+| M05-01 | Tutor Engine | Define deterministic tutor state model | ACTIVE | Yes, small |
 | M05-02 | Tutor Engine | Implement state transition rules | BACKLOG | Yes |
 | M05-03 | Tutor Engine | Add hint escalation policy | BACKLOG | Yes |
 | M05-04 | Tutor Engine | Add answer-leakage guard | BACKLOG | Yes |
