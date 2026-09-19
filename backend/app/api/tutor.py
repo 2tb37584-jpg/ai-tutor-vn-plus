@@ -9,14 +9,18 @@ from app.schemas.tutor import (
     StartTutorResponse,
     StudentProblemAnalysis,
     TutorReplyRequest,
+    TutorReplyIntent,
     TutorReplyResponse,
     AttemptRequest,
     AttemptResponse,
     TutorState,
+    TutorTransitionEvent,
+    TutorTransitionInput,
     TutorTurn,
 )
 from app.services.answer_leakage import detects_final_answer_leak
 from app.services.tutor_ai import TutorAI
+from app.services.tutor_state import InvalidTutorTransition, transition_tutor_state
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
@@ -90,6 +94,20 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     except ValueError as error:
         raise HTTPException(status_code=500, detail="Tutor session is unavailable") from error
 
+    if payload.intent is TutorReplyIntent.HINT_REQUEST:
+        try:
+            transition_tutor_state(
+                TutorTransitionInput(
+                    state=current_state,
+                    event=TutorTransitionEvent.HINT_REQUESTED,
+                )
+            )
+        except InvalidTutorTransition as error:
+            raise HTTPException(
+                status_code=409,
+                detail="Hint request is unavailable in the current tutor state",
+            ) from error
+
     previous = list(
         db.scalars(
             select(TutorMessage)
@@ -99,13 +117,17 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     )
     history = [(m.role, m.content) for m in previous]
     db.add(TutorMessage(session_id=session.id, role="user", content=payload.student_message))
-    tutor_turn = ai.continue_turn(
-        problem=session.normalized_problem,
-        skill=session.primary_skill,
-        history=history,
-        student_message=payload.student_message,
-        current_state=current_state,
-    )
+    turn_arguments = {
+        "problem": session.normalized_problem,
+        "skill": session.primary_skill,
+        "history": history,
+        "student_message": payload.student_message,
+        "current_state": current_state,
+    }
+    if payload.intent is TutorReplyIntent.HINT_REQUEST:
+        tutor_turn = ai.continue_turn(**turn_arguments, intent=payload.intent)
+    else:
+        tutor_turn = ai.continue_turn(**turn_arguments)
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))

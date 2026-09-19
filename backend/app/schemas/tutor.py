@@ -22,6 +22,12 @@ class TutorTransitionEvent(str, Enum):
     VERIFIED = "verified"
     VERIFICATION_FAILED = "verification_failed"
     TRANSFER_COMPLETED = "transfer_completed"
+    HINT_REQUESTED = "hint_requested"
+
+
+class TutorReplyIntent(str, Enum):
+    ATTEMPT = "attempt"
+    HINT_REQUEST = "hint_request"
 
 
 class TutorTransitionInput(BaseModel):
@@ -75,6 +81,7 @@ class StartTutorResponse(BaseModel):
 class TutorReplyRequest(BaseModel):
     session_id: int
     student_message: str = Field(min_length=1, max_length=8000)
+    intent: TutorReplyIntent = TutorReplyIntent.ATTEMPT
 
 
 class TutorReplyResponse(BaseModel):

@@ -1,7 +1,14 @@
 from __future__ import annotations
 from openai import OpenAI
 from app.core.config import get_settings
-from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTransitionEvent, TutorTransitionInput, TutorTurn
+from app.schemas.tutor import (
+    ProblemAnalysis,
+    TutorReplyIntent,
+    TutorState,
+    TutorTransitionEvent,
+    TutorTransitionInput,
+    TutorTurn,
+)
 from app.services.tutor_state import transition_tutor_state
 
 ANALYZE_PROMPT = """
@@ -142,7 +149,17 @@ class TutorAI:
         student_message: str,
         *,
         current_state: TutorState = TutorState.ASK_ATTEMPT,
+        intent: TutorReplyIntent = TutorReplyIntent.ATTEMPT,
     ) -> TutorTurn:
+        target_state = current_state
+        if intent is TutorReplyIntent.HINT_REQUEST:
+            target_state = transition_tutor_state(
+                TutorTransitionInput(
+                    state=current_state,
+                    event=TutorTransitionEvent.HINT_REQUESTED,
+                )
+            )
+
         if not self.client:
             turn = TutorTurn(
                 message="Em thử giải thích vì sao em chọn bước đó. Nếu chưa chắc, hãy viết điều kiện hoặc công thức liên quan trước.",
@@ -150,11 +167,18 @@ class TutorAI:
                 hint_level=1,
                 skill_tags=[skill],
             )
+            if intent is TutorReplyIntent.HINT_REQUEST:
+                return self._normalize_turn(turn, target_state)
             return self._with_continued_turn_state(turn, current_state)
 
         transcript = "\n".join(f"{role}: {content}" for role, content in history[-12:])
-        generation_policy = self._generation_policy(current_state)
-        if current_state in _ATTEMPT_STATES:
+        generation_policy = self._generation_policy(target_state)
+        if intent is TutorReplyIntent.HINT_REQUEST:
+            policy_instructions = (
+                "The student explicitly requested more help. Generate exactly the assistance "
+                f"for target state {target_state.value}: {generation_policy}"
+            )
+        elif current_state in _ATTEMPT_STATES:
             policy_instructions = (
                 f"Attempt response policy: {_ATTEMPT_RESPONSE_POLICY}\n"
                 f"Current-state assistance policy (only for a clearly incorrect attempt): "
@@ -164,7 +188,7 @@ class TutorAI:
             policy_instructions = f"Current-state generation policy: {generation_policy}"
         prompt = (
             f"Problem: {problem}\nPrimary skill: {skill}\n"
-            f"Current tutor state: {current_state.value}\n"
+            f"Current tutor state: {target_state.value}\n"
             f"{policy_instructions}\n\n"
             f"Recent transcript:\n{transcript}\n\n"
             f"Student's newest message: {student_message}"
@@ -177,6 +201,8 @@ class TutorAI:
             ],
             text_format=TutorTurn,
         )
+        if intent is TutorReplyIntent.HINT_REQUEST:
+            return self._normalize_turn(response.output_parsed, target_state)
         return self._with_continued_turn_state(response.output_parsed, current_state)
 
     @staticmethod
