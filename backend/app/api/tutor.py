@@ -11,11 +11,11 @@ from app.schemas.tutor import (
     TutorReplyRequest,
     TutorReplyResponse,
     AttemptRequest,
+    AttemptResponse,
     TutorState,
     TutorTurn,
 )
 from app.services.answer_leakage import detects_final_answer_leak
-from app.services.mastery import record_attempt
 from app.services.tutor_ai import TutorAI
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
@@ -113,19 +113,15 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     return TutorReplyResponse(tutor=tutor_turn)
 
 
-@router.post("/attempt")
+@router.post("/attempt", response_model=AttemptResponse)
 def save_attempt(payload: AttemptRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     owned_student(db, user, payload.student_id)
     if payload.session_id is not None:
         owned_session(db, user, payload.session_id)
     attempt = Attempt(**payload.model_dump())
     db.add(attempt)
-    update = record_attempt(
-        db,
-        student_id=payload.student_id,
-        skill_code=payload.skill_code,
-        correct=payload.correct,
-        hint_count=payload.hint_count,
-    )
     db.commit()
-    return {"ok": True, "mastery_before": update.old, "mastery_after": update.new}
+    return AttemptResponse(
+        mastery_updated=False,
+        mastery_reason="client_claim_not_mastery_eligible",
+    )

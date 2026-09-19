@@ -88,3 +88,11 @@ class AttemptRequest(BaseModel):
     correct: bool
     hint_count: int = Field(default=0, ge=0, le=20)
     misconception: str | None = None
+
+
+class AttemptResponse(BaseModel):
+    ok: bool = True
+    mastery_updated: bool
+    mastery_reason: str
+    mastery_before: float | None = None
+    mastery_after: float | None = None
