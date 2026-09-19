@@ -29,7 +29,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
 | M09-02 | Evals | Add answer-leakage suite | DONE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
-| M10-02A | Tutor Engine | Explicit hint request contract | ACTIVE | Yes |
+| M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | BACKLOG | Yes |
 
 ## Current recommended sequence
