@@ -27,7 +27,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
-| M09-02 | Evals | Add answer-leakage suite | BACKLOG | Yes |
+| M09-02 | Evals | Add answer-leakage suite | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | BACKLOG | Yes |
 | M10-02 | UI | Student attempt + hint controls | BACKLOG | Yes |
 
