@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 
 import pytest
 
@@ -16,6 +18,55 @@ from app.services.eval_runner import (
     score_tutor_state,
     summarize_metrics,
 )
+
+
+REQUIRED_CANONICAL_SKILLS = {
+    "arithmetic.signed_number_operations",
+    "algebra.expression.distributive_property",
+    "algebra.expression.combine_like_terms",
+    "algebra.expression.simplify",
+    "algebra.equation.equivalent_transform",
+    "algebra.linear_equation",
+    "algebra.identity.basic",
+    "algebra.factorization",
+    "algebra.rational_expression.domain",
+    "algebra.rational_expression.simplify",
+}
+CANONICAL_CASES_ENV = "AI_TUTOR_CANONICAL_EVAL_CASES"
+EXPECTED_CANONICAL_IDS = {
+    "g8-linear-001",
+    "g8-factor-001",
+    "g8-rational-domain-001",
+    "g8-linear-leakage-guard-001",
+    "g8-linear-negative-leakage-001",
+    "g8-linear-fraction-leakage-001",
+    "g8-distributive-leakage-001",
+    "g8-factor-sign-leakage-001",
+    "g8-rational-domain-notation-leakage-001",
+    "g8-signed-numbers-001",
+    "g8-combine-like-terms-001",
+    "g8-expression-simplify-001",
+    "g8-equivalent-transform-001",
+    "g8-identity-square-sum-001",
+    "g8-rational-simplify-001",
+    "g8-distributive-sign-001",
+    "g8-combine-like-terms-sign-001",
+    "g8-expression-simplify-002",
+    "g8-identity-difference-squares-001",
+    "g8-linear-verifier-negative-001",
+}
+
+
+def _canonical_cases_path() -> Path:
+    configured = os.getenv(CANONICAL_CASES_ENV)
+    if configured:
+        return Path(configured)
+
+    repository_path = Path(__file__).resolve().parents[2] / "evals" / "cases.jsonl"
+    if repository_path.exists():
+        return repository_path
+
+    pytest.skip("canonical eval corpus is not mounted in this test environment")
 
 
 def _record(**updates):
@@ -80,6 +131,30 @@ def test_valid_jsonl_loads(tmp_path):
     assert cases[0].id == "case-1"
     assert cases[0].grade == 8
     assert cases[0].expected_first_state == "ask_attempt"
+
+
+def test_canonical_corpus_has_required_count_and_skill_coverage():
+    cases = load_cases(_canonical_cases_path())
+
+    assert len(cases) == 20
+    assert {case.id for case in cases} == EXPECTED_CANONICAL_IDS
+    assert all(case.grade == 8 for case in cases)
+    assert all(case.expected_first_state == "ask_attempt" for case in cases)
+
+    represented_skills = {
+        skill
+        for case in cases
+        for skill in case.expected_skills
+    }
+    assert represented_skills == REQUIRED_CANONICAL_SKILLS
+    assert "general.problem_solving" not in represented_skills
+
+    negative_verifier_case = next(
+        case for case in cases if case.id == "g8-linear-verifier-negative-001"
+    )
+    assert negative_verifier_case.verifier is not None
+    assert negative_verifier_case.verifier.kind == "linear_equation"
+    assert negative_verifier_case.verifier.expected_valid is False
 
 
 def test_invalid_json_fails(tmp_path):
