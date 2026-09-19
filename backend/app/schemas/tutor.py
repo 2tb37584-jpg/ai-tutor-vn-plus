@@ -88,6 +88,18 @@ class TutorReplyResponse(BaseModel):
     tutor: TutorTurn
 
 
+class TutorSessionSummaryResponse(BaseModel):
+    session_id: int
+    primary_skill: str
+    current_state: TutorState
+    student_reply_count: int
+    attempt_reply_count: int
+    hint_request_count: int
+    unclassified_reply_count: int
+    timed_reply_count: int
+    average_response_latency_ms: float | None
+
+
 class AttemptRequest(BaseModel):
     student_id: int
     session_id: int | None = None

@@ -13,6 +13,7 @@ from app.schemas.tutor import (
     TutorReplyRequest,
     TutorReplyIntent,
     TutorReplyResponse,
+    TutorSessionSummaryResponse,
     AttemptRequest,
     AttemptResponse,
     TutorState,
@@ -21,6 +22,7 @@ from app.schemas.tutor import (
     TutorTurn,
 )
 from app.services.answer_leakage import detects_final_answer_leak
+from app.services.session_summary import InvalidTutorSessionState, summarize_tutor_session
 from app.services.tutor_ai import TutorAI
 from app.services.tutor_state import InvalidTutorTransition, transition_tutor_state
 
@@ -158,6 +160,32 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
     return TutorReplyResponse(tutor=tutor_turn)
+
+
+@router.get(
+    "/sessions/{session_id}/summary",
+    response_model=TutorSessionSummaryResponse,
+)
+def tutor_session_summary(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TutorSessionSummaryResponse:
+    session = owned_session(db, user, session_id)
+    messages = list(
+        db.scalars(
+            select(TutorMessage)
+            .where(TutorMessage.session_id == session.id)
+            .order_by(TutorMessage.id)
+        )
+    )
+    try:
+        return summarize_tutor_session(session, messages)
+    except InvalidTutorSessionState as error:
+        raise HTTPException(
+            status_code=500,
+            detail="Tutor session is unavailable",
+        ) from error
 
 
 @router.post("/attempt", response_model=AttemptResponse)
