@@ -49,4 +49,6 @@ textarea { resize: vertical; }
 .skillTags { display: inline-flex; flex-wrap: wrap; gap: 5px; }
 .skillTag { padding: 2px 6px; border: 1px solid #d1d1ca; border-radius: 999px; overflow-wrap: anywhere; }
 .reply { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin-bottom: 10px; }
+.tutorActions { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.tutorActions .ghost:only-child { margin-left: auto; }
 @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } .hero { flex-direction: column; } .hero h1 { font-size: 46px; } }

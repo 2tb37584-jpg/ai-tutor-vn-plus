@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type Student = { id: number; display_name: string; grade: number | null; preferred_language: string };
 type Mastery = { skill_code: string; probability: number; exposures: number; correct_streak: number };
@@ -44,6 +44,8 @@ type TutorReplyResponse = {
   tutor: TutorTurn;
 };
 
+type TutorReplyIntent = "attempt" | "hint_request";
+
 const TUTOR_STATE_LABELS: Record<TutorState, string> = {
   diagnose: "Đang chẩn đoán",
   ask_attempt: "Đang chờ em thử",
@@ -54,6 +56,14 @@ const TUTOR_STATE_LABELS: Record<TutorState, string> = {
   transfer: "Bài vận dụng",
   complete: "Hoàn thành",
 };
+
+const HINT_ELIGIBLE_STATES: ReadonlySet<TutorState> = new Set<TutorState>([
+  "ask_attempt",
+  "hint_1",
+  "hint_2",
+]);
+
+const HINT_REQUEST_MESSAGE = "Em muốn xin thêm một gợi ý.";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
 
@@ -90,6 +100,7 @@ export default function Home() {
   const [analysis, setAnalysis] = useState<StartResponse["analysis"] | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const tutorRequestInFlight = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("aitutor_token") || "";
@@ -116,6 +127,9 @@ export default function Home() {
     }
     return null;
   }, [messages]);
+
+  const canRequestHint =
+    latestTutorTurn !== null && HINT_ELIGIBLE_STATES.has(latestTutorTurn.state);
 
   async function authenticate(mode: "register" | "login") {
     setBusy(true);
@@ -207,17 +221,22 @@ export default function Home() {
     }
   }
 
-  async function sendReply(event: FormEvent) {
-    event.preventDefault();
-    if (!sessionId || !reply.trim()) return;
-    const studentText = reply.trim();
-    setReply("");
-    setMessages((m) => [...m, { role: "student", content: studentText }]);
+  async function submitTutorReply(studentText: string, intent: TutorReplyIntent) {
+    const trimmedText = studentText.trim();
+    if (!sessionId || busy || tutorRequestInFlight.current || !trimmedText) return;
+
+    tutorRequestInFlight.current = true;
+    if (intent === "attempt") setReply("");
+    setMessages((m) => [...m, { role: "student", content: trimmedText }]);
     setBusy(true);
     try {
       const data = await api<TutorReplyResponse>("/tutor/reply", {
         method: "POST",
-        body: JSON.stringify({ session_id: sessionId, student_message: studentText }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          student_message: trimmedText,
+          intent,
+        }),
       }, token);
       setMessages((m) => [
         ...m,
@@ -226,8 +245,14 @@ export default function Home() {
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không gửi được câu trả lời");
     } finally {
+      tutorRequestInFlight.current = false;
       setBusy(false);
     }
+  }
+
+  function sendReply(event: FormEvent) {
+    event.preventDefault();
+    void submitTutorReply(reply, "attempt");
   }
 
   function logout() {
@@ -350,13 +375,25 @@ export default function Home() {
                   <input disabled={busy} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Nhập suy nghĩ hoặc bước giải của em..." />
                   <button disabled={busy || !reply.trim()}>Gửi</button>
                 </form>
-                <button className="ghost" disabled={busy} onClick={() => {
-                  setSessionId(null);
-                  setMessages([]);
-                  setAnalysis(null);
-                  setReply("");
-                  setImageDataUrl(null);
-                }}>Bài mới</button>
+                <div className="tutorActions">
+                  {canRequestHint && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => void submitTutorReply(HINT_REQUEST_MESSAGE, "hint_request")}
+                    >
+                      Xin gợi ý
+                    </button>
+                  )}
+                  <button className="ghost" disabled={busy} onClick={() => {
+                    setSessionId(null);
+                    setMessages([]);
+                    setAnalysis(null);
+                    setReply("");
+                    setImageDataUrl(null);
+                  }}>Bài mới</button>
+                </div>
               </>
             )}
           </section>
