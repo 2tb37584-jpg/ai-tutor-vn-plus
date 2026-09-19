@@ -32,7 +32,7 @@ textarea { resize: vertical; }
 .mastery strong { overflow-wrap: anywhere; }
 .mastery progress { width: 100%; margin: 7px 0; }
 .muted { color: #777; font-size: 13px; }
-.tutor { min-height: 620px; }
+.card.tutor { min-height: 620px; }
 .preview { max-height: 260px; max-width: 100%; border-radius: 14px; object-fit: contain; background: #efefeb; }
 .analysis { display: flex; flex-direction: column; gap: 6px; padding: 14px; border-radius: 14px; background: #f1f1ed; margin-bottom: 18px; font-size: 13px; }
 .analysis strong { font-size: 14px; }
