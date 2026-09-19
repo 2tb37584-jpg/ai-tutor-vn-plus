@@ -13,6 +13,91 @@ def test_equivalent_expressions() -> None:
     assert equivalent("(x+1)*(x+1)", "x^2+2*x+1")
 
 
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("x*(y+z)", "x*y+x*z"),
+        ("(x+y)^2", "x^2+2*x*y+y^2"),
+        ("x/2", "0.5*x"),
+        ("(x+y)/4", "x/4+y/4"),
+        ("1+1", "2"),
+        ("1/2", "0.5"),
+    ],
+)
+def test_supported_expressions_are_equivalent(left: str, right: str) -> None:
+    assert equivalent(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("x+1", "x+2"),
+        ("(x+1)^2", "x^2+1"),
+    ],
+)
+def test_supported_expressions_can_be_non_equivalent(left: str, right: str) -> None:
+    assert not equivalent(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("x/x", "1"),
+        ("1/x", "1/x"),
+        ("(x^2-1)/(x-1)", "x+1"),
+        ("(x+y)/(x-y)", "(x+y)/(x-y)"),
+    ],
+)
+def test_expression_equivalence_rejects_variable_denominators(
+    left: str, right: str
+) -> None:
+    assert not equivalent(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("1/0", "1/0"),
+        ("x/(2-2)", "0"),
+        ("1/(3-3)", "1/(3-3)"),
+    ],
+)
+def test_expression_equivalence_rejects_zero_denominators(
+    left: str, right: str
+) -> None:
+    assert not equivalent(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("x^(1/2)", "x^(1/2)"),
+        ("x^(-1)", "1/x"),
+        ("(x+1)^(1/2)", "(x+1)^(1/2)"),
+    ],
+)
+def test_expression_equivalence_rejects_unsupported_powers(
+    left: str, right: str
+) -> None:
+    assert not equivalent(left, right)
+
+
+@pytest.mark.parametrize(
+    ("left", "right"),
+    [
+        ("__import__('os')", "0"),
+        ("sin(x)", "0"),
+        ("sqrt(x)", "0"),
+        ("x+1=2", "2"),
+        ("x=x", "x"),
+    ],
+)
+def test_expression_equivalence_rejects_unsafe_or_equation_input(
+    left: str, right: str
+) -> None:
+    assert not equivalent(left, right)
+
+
 def test_rejects_unsafe_characters() -> None:
     assert not equivalent("__import__('os')", "0")
 

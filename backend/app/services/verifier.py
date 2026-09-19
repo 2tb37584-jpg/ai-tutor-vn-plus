@@ -76,10 +76,55 @@ def _is_non_finite(expr: Expr) -> bool:
     return expr.is_finite is False or expr.has(zoo, nan, oo, -oo)
 
 
+def _has_unsupported_expression_denominator(expr: Expr) -> bool:
+    """Reject symbolic and deterministically zero denominators before cancellation."""
+    for node in preorder_traversal(expr):
+        if not (
+            isinstance(node, Pow)
+            and node.exp.is_number
+            and node.exp.is_negative is True
+        ):
+            continue
+        if node.base.free_symbols or simplify(node.base) == 0:
+            return True
+    return False
+
+
+def _parse_supported_expression(text: str) -> Expr:
+    if "=" in text:
+        raise ValueError("Equations are not expression-equivalence inputs")
+
+    expression = _parse_safe(text, evaluate=False)
+    supported_symbols = set(_SYMBOLS.values())
+    if expression.free_symbols - supported_symbols:
+        raise ValueError("Expression contains an unsupported symbol")
+    if _has_unsupported_expression_denominator(expression):
+        raise ValueError("Expression contains an unsupported denominator")
+    if _is_non_finite(expression):
+        raise ValueError("Expression is non-finite")
+
+    symbols = sorted(expression.free_symbols, key=lambda symbol: symbol.name)
+    if symbols:
+        polynomial = Poly(expression, *symbols)
+        if any(
+            _is_non_finite(coefficient) or coefficient.is_finite is not True
+            for coefficient in polynomial.coeffs()
+        ):
+            raise ValueError("Expression contains a non-finite coefficient")
+    else:
+        value = simplify(expression)
+        if _is_non_finite(value) or value.is_finite is not True:
+            raise ValueError("Expression is non-finite")
+    return expression
+
+
 def equivalent(left: str, right: str) -> bool:
-    """Limited deterministic equivalence checker for simple school algebra."""
+    """Compare finite polynomial school-algebra expressions deterministically."""
     try:
-        return simplify(_parse_safe(left) - _parse_safe(right)) == 0
+        left_expression = _parse_supported_expression(left)
+        right_expression = _parse_supported_expression(right)
+        difference = simplify(left_expression - right_expression)
+        return not _is_non_finite(difference) and difference == 0
     except Exception:
         return False
 
