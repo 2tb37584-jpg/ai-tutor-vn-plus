@@ -69,6 +69,8 @@ class TutorMessage(Base):
     session_id: Mapped[int] = mapped_column(ForeignKey("tutor_sessions.id", ondelete="CASCADE"), index=True)
     role: Mapped[str] = mapped_column(String(24))
     content: Mapped[str] = mapped_column(Text)
+    reply_intent: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    response_latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

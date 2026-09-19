@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,6 +27,10 @@ from app.services.tutor_state import InvalidTutorTransition, transition_tutor_st
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
 _SAFE_TUTOR_FALLBACK = "Em hãy tiếp tục từ bước em đang làm và giải thích vì sao bước đó hợp lý. Thầy/cô sẽ giúp em kiểm tra."
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def _guard_tutor_turn(turn: TutorTurn, expected_answer: str) -> TutorTurn:
@@ -88,6 +94,7 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
 
 @router.post("/reply", response_model=TutorReplyResponse)
 def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    received_at = _utcnow()
     session = owned_session(db, user, payload.session_id)
     try:
         current_state = TutorState(session.current_state)
@@ -116,7 +123,25 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
         )
     )
     history = [(m.role, m.content) for m in previous]
-    db.add(TutorMessage(session_id=session.id, role="user", content=payload.student_message))
+    previous_assistant = next(
+        (message for message in reversed(previous) if message.role == "assistant"),
+        None,
+    )
+    response_latency_ms = None
+    if previous_assistant is not None and previous_assistant.created_at is not None:
+        elapsed_ms = int(
+            (received_at - previous_assistant.created_at).total_seconds() * 1000
+        )
+        response_latency_ms = max(0, elapsed_ms)
+    db.add(
+        TutorMessage(
+            session_id=session.id,
+            role="user",
+            content=payload.student_message,
+            reply_intent=payload.intent.value,
+            response_latency_ms=response_latency_ms,
+        )
+    )
     turn_arguments = {
         "problem": session.normalized_problem,
         "skill": session.primary_skill,
