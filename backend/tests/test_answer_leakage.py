@@ -26,3 +26,47 @@ def test_detects_final_answer_leak(
     detected: bool,
 ) -> None:
     assert detects_final_answer_leak(message, expected_answer, model_reports_reveal) is detected
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_answer"),
+    [
+        ("đáp án là 4", "4"),
+        ("kết quả là 4", "4"),
+        ("answer is 4", "4"),
+        ("result = 4", "4"),
+        ("x = 4", "4"),
+        ("x=4", "4"),
+        ("y = -2", "-2"),
+        ("Đáp án là -2", "-2"),
+        ("Answer is 2.5", "2.5"),
+        ("Kết quả là 2,5", "2,5"),
+        ("Đáp án là (x-2)(x-3)", "(x-2)(x-3)"),
+        ("Điều kiện là x != 2", "x != 2"),
+    ],
+)
+def test_direct_answer_forms_are_detected(message: str, expected_answer: str) -> None:
+    assert detects_final_answer_leak(message, expected_answer, False) is True
+
+
+def test_model_self_report_detects_safe_looking_text() -> None:
+    assert detects_final_answer_leak("Em hãy thử bước đầu tiên.", "4", True) is True
+
+
+def test_nfkc_case_and_whitespace_are_normalized() -> None:
+    assert detects_final_answer_leak("ＡＮＳＷＥＲ　ＩＳ   ４", "4", False) is True
+    assert detects_final_answer_leak("VẬY   X   =   4", "4", False) is True
+
+
+@pytest.mark.parametrize("message", ["Có 40 học sinh.", "Hạng tử 4x."])
+def test_scalar_boundaries_avoid_false_positives(message: str) -> None:
+    assert detects_final_answer_leak(message, "4", False) is False
+
+
+def test_instructional_use_of_answer_number_is_safe() -> None:
+    assert detects_final_answer_leak("Hãy thử cộng 2 vào hai vế.", "2", False) is False
+
+
+def test_decimal_point_and_comma_are_not_treated_as_equivalent() -> None:
+    assert detects_final_answer_leak("Đáp án là 2,5", "2.5", False) is False
+    assert detects_final_answer_leak("Đáp án là 2.5", "2,5", False) is False

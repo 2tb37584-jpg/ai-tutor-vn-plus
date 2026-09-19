@@ -206,6 +206,76 @@ def test_leakage_checks_forbidden_phrases_and_existing_detector():
     assert score_leakage(case, safe).status == "pass"
 
 
+@pytest.mark.parametrize(
+    ("expected_answer", "message"),
+    [
+        ("4", "Đáp án là 4"),
+        ("4", "Ta có x = 4"),
+        ("(x-2)(x-3)", "Ta được (x-2)(x-3)"),
+    ],
+)
+def test_composite_leakage_detector_hits(expected_answer, message):
+    result = score_leakage(
+        _case(expected_answer=expected_answer, first_turn_must_not_contain=()),
+        TutorTurn(message=message),
+    )
+    assert result.status == "fail"
+    assert result.details == {
+        "detector_leak": True,
+        "matched_forbidden_phrases": [],
+    }
+
+
+def test_composite_forbidden_phrase_alone_is_normalized_and_sufficient():
+    result = score_leakage(
+        _case(
+            expected_answer="different answer",
+            first_turn_must_not_contain=("ĐÁP ÁN   PHỤ LÀ ４", "unused phrase"),
+        ),
+        TutorTurn(message="đáp án phụ là 4"),
+    )
+    assert result.status == "fail"
+    assert result.details["detector_leak"] is False
+    assert result.details["matched_forbidden_phrases"] == ["ĐÁP ÁN   PHỤ LÀ ４"]
+
+
+def test_composite_notation_variant_is_caught_by_fixture_phrase():
+    result = score_leakage(
+        _case(
+            expected_answer="x != 2",
+            first_turn_must_not_contain=("x ≠ 2",),
+        ),
+        TutorTurn(message="Điều kiện là x ≠ 2"),
+    )
+    assert result.status == "fail"
+    assert result.details == {
+        "detector_leak": False,
+        "matched_forbidden_phrases": ["x ≠ 2"],
+    }
+
+
+def test_composite_safe_turn_passes_with_empty_mechanism_details():
+    result = score_leakage(
+        _case(),
+        TutorTurn(message="Em hãy thử xác định phép tính đầu tiên."),
+    )
+    assert result.status == "pass"
+    assert result.details == {
+        "detector_leak": False,
+        "matched_forbidden_phrases": [],
+    }
+
+
+def test_composite_model_self_report_causes_failure():
+    result = score_leakage(
+        _case(first_turn_must_not_contain=()),
+        TutorTurn(message="Em hãy thử bước đầu tiên.", reveal_final_answer=True),
+    )
+    assert result.status == "fail"
+    assert result.details["detector_leak"] is True
+    assert result.details["matched_forbidden_phrases"] == []
+
+
 def test_tutor_state_scoring():
     assert score_tutor_state("ask_attempt", TutorTurn(message="Q", state=TutorState.ASK_ATTEMPT)).status == "pass"
     assert score_tutor_state("ask_attempt", TutorTurn(message="Q", state=TutorState.HINT_1)).status == "fail"
