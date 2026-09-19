@@ -23,7 +23,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M07-02 | Skill Graph | Implement controlled skill registry | DONE | Yes |
 | M06-01 | Verifier | Harden one-variable linear equation verifier | DONE | Yes |
 | M06-02 | Verifier | Add expression-equivalence verification | BACKLOG | Yes |
-| M08-01 | Mastery | Define mastery event contract | BACKLOG | Mostly ChatGPT |
+| M08-01 | Mastery | Define mastery event contract | ACTIVE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | BACKLOG | Yes |
 | M08-03 | Mastery | Add misconception evidence model | BACKLOG | Yes |
 | M09-01 | Evals | Build baseline evaluation runner | BACKLOG | Yes |
