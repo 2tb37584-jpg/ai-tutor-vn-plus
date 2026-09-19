@@ -4,7 +4,30 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type Student = { id: number; display_name: string; grade: number | null; preferred_language: string };
 type Mastery = { skill_code: string; probability: number; exposures: number; correct_streak: number };
-type ChatMessage = { role: "student" | "tutor"; content: string };
+type TutorState =
+  | "diagnose"
+  | "ask_attempt"
+  | "hint_1"
+  | "hint_2"
+  | "explain_step"
+  | "verify"
+  | "transfer"
+  | "complete";
+
+type TutorTurn = {
+  message: string;
+  state: TutorState;
+  next_action: string;
+  hint_level: number;
+  skill_tags: string[];
+  misconception: string | null;
+  likely_correct: boolean | null;
+  reveal_final_answer: boolean;
+};
+
+type ChatMessage =
+  | { role: "student"; content: string }
+  | { role: "tutor"; content: string; turn: TutorTurn };
 
 type StartResponse = {
   session_id: number;
@@ -14,7 +37,22 @@ type StartResponse = {
     skills: string[];
     confidence: number;
   };
-  tutor: { message: string; skill_tags: string[] };
+  tutor: TutorTurn;
+};
+
+type TutorReplyResponse = {
+  tutor: TutorTurn;
+};
+
+const TUTOR_STATE_LABELS: Record<TutorState, string> = {
+  diagnose: "Đang chẩn đoán",
+  ask_attempt: "Đang chờ em thử",
+  hint_1: "Gợi ý 1",
+  hint_2: "Gợi ý 2",
+  explain_step: "Giải thích bước",
+  verify: "Đang kiểm tra",
+  transfer: "Bài vận dụng",
+  complete: "Hoàn thành",
 };
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
@@ -70,6 +108,14 @@ export default function Home() {
     () => students.find((s) => s.id === selectedStudent) || null,
     [students, selectedStudent]
   );
+
+  const latestTutorTurn = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role === "tutor") return message.turn;
+    }
+    return null;
+  }, [messages]);
 
   async function authenticate(mode: "register" | "login") {
     setBusy(true);
@@ -151,7 +197,8 @@ export default function Home() {
       }, token);
       setSessionId(data.session_id);
       setAnalysis(data.analysis);
-      setMessages([{ role: "tutor", content: data.tutor.message }]);
+      setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
+      setReply("");
       setStatus("Phiên học đã bắt đầu.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không bắt đầu được phiên học");
@@ -168,11 +215,14 @@ export default function Home() {
     setMessages((m) => [...m, { role: "student", content: studentText }]);
     setBusy(true);
     try {
-      const data = await api<{ tutor: { message: string } }>("/tutor/reply", {
+      const data = await api<TutorReplyResponse>("/tutor/reply", {
         method: "POST",
         body: JSON.stringify({ session_id: sessionId, student_message: studentText }),
       }, token);
-      setMessages((m) => [...m, { role: "tutor", content: data.tutor.message }]);
+      setMessages((m) => [
+        ...m,
+        { role: "tutor", content: data.tutor.message, turn: data.tutor },
+      ]);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không gửi được câu trả lời");
     } finally {
@@ -200,7 +250,11 @@ export default function Home() {
         {token && <button className="ghost" onClick={logout}>Đăng xuất</button>}
       </header>
 
-      {status && <div className="status">{status}</div>}
+      {(status || busy) && (
+        <div className="status" role="status" aria-live="polite">
+          {busy ? "Đang xử lý..." : status}
+        </div>
+      )}
 
       {!token ? (
         <section className="card auth">
@@ -261,19 +315,48 @@ export default function Home() {
                     <span>Độ tin cậy đọc đề: {Math.round(analysis.confidence * 100)}%</span>
                   </div>
                 )}
+                {latestTutorTurn && (
+                  <div className="sessionState">
+                    <span>Tiến trình hiện tại</span>
+                    <strong>{TUTOR_STATE_LABELS[latestTutorTurn.state]}</strong>
+                  </div>
+                )}
                 <div className="chat">
                   {messages.map((message, index) => (
                     <div key={index} className={`bubble ${message.role}`}>
                       <b>{message.role === "tutor" ? "Gia sư" : "Học sinh"}</b>
+                      {message.role === "tutor" && (
+                        <div className="tutorMeta">
+                          <span className="stateBadge">
+                            {TUTOR_STATE_LABELS[message.turn.state]}
+                          </span>
+                          {message.turn.hint_level > 0 && (
+                            <span>Mức gợi ý {message.turn.hint_level}</span>
+                          )}
+                          {message.turn.skill_tags.length > 0 && (
+                            <span className="skillTags">
+                              {message.turn.skill_tags.map((skill) => (
+                                <span className="skillTag" key={skill}>{skill}</span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <p>{message.content}</p>
                     </div>
                   ))}
                 </div>
                 <form onSubmit={sendReply} className="reply">
-                  <input value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Nhập suy nghĩ hoặc bước giải của em..." />
+                  <input disabled={busy} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Nhập suy nghĩ hoặc bước giải của em..." />
                   <button disabled={busy || !reply.trim()}>Gửi</button>
                 </form>
-                <button className="ghost" onClick={() => { setSessionId(null); setMessages([]); setAnalysis(null); }}>Bài mới</button>
+                <button className="ghost" disabled={busy} onClick={() => {
+                  setSessionId(null);
+                  setMessages([]);
+                  setAnalysis(null);
+                  setReply("");
+                  setImageDataUrl(null);
+                }}>Bài mới</button>
               </>
             )}
           </section>
