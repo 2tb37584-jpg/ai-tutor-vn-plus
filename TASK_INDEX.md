@@ -28,6 +28,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
 | M09-02 | Evals | Add answer-leakage suite | DONE | Yes |
+| M09-03 | Evaluation | Expand Grade 8 algebra eval corpus to 20 cases | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
