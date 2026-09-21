@@ -34,6 +34,28 @@ REQUIRED_CANONICAL_SKILLS = {
     "algebra.rational_expression.simplify",
 }
 CANONICAL_CASES_ENV = "AI_TUTOR_CANONICAL_EVAL_CASES"
+M09_07_CANONICAL_IDS = {
+    "g8-signed-numbers-negative-division-chain-001",
+    "g8-signed-numbers-subtract-product-001",
+    "g8-signed-numbers-negative-product-subtract-001",
+    "g8-distributive-two-groups-001",
+    "g8-distributive-negated-group-plus-001",
+    "g8-combine-like-terms-leading-negative-one-001",
+    "g8-combine-like-terms-constant-cancel-001",
+    "g8-combine-like-terms-reordered-001",
+    "g8-expression-simplify-negated-group-001",
+    "g8-expression-simplify-nested-bracket-001",
+    "g8-equivalent-transform-divide-parenthesized-side-001",
+    "g8-equivalent-transform-subtract-variable-both-sides-001",
+    "g8-identity-scaled-sum-square-002",
+    "g8-identity-recognize-perfect-square-sum-001",
+    "g8-identity-recognize-difference-squares-001",
+    "g8-factor-common-factor-difference-squares-001",
+    "g8-factor-leading-coefficient-negative-middle-001",
+    "g8-rational-domain-factorable-quadratic-001",
+    "g8-rational-domain-zero-factor-001",
+    "g8-rational-simplify-partial-cancellation-001",
+}
 EXPECTED_CANONICAL_IDS = {
     "g8-linear-001",
     "g8-factor-001",
@@ -115,18 +137,18 @@ EXPECTED_CANONICAL_IDS = {
     "g8-rational-simplify-negative-factor-001",
     "g8-rational-simplify-repeated-factor-001",
     "g8-rational-simplify-coefficient-factor-001",
-}
+} | M09_07_CANONICAL_IDS
 EXPECTED_CANONICAL_SKILL_COUNTS = {
-    "arithmetic.signed_number_operations": 7,
-    "algebra.expression.distributive_property": 8,
-    "algebra.expression.combine_like_terms": 7,
-    "algebra.expression.simplify": 8,
-    "algebra.equation.equivalent_transform": 8,
+    "arithmetic.signed_number_operations": 10,
+    "algebra.expression.distributive_property": 10,
+    "algebra.expression.combine_like_terms": 10,
+    "algebra.expression.simplify": 10,
+    "algebra.equation.equivalent_transform": 10,
     "algebra.linear_equation": 10,
-    "algebra.identity.basic": 7,
-    "algebra.factorization": 8,
-    "algebra.rational_expression.domain": 8,
-    "algebra.rational_expression.simplify": 9,
+    "algebra.identity.basic": 10,
+    "algebra.factorization": 10,
+    "algebra.rational_expression.domain": 10,
+    "algebra.rational_expression.simplify": 10,
 }
 
 
@@ -209,7 +231,7 @@ def test_valid_jsonl_loads(tmp_path):
 def test_canonical_corpus_has_required_count_and_skill_coverage():
     cases = load_cases(_canonical_cases_path())
 
-    assert len(cases) == 80
+    assert len(cases) == 100
     assert {case.id for case in cases} == EXPECTED_CANONICAL_IDS
     assert all(case.grade == 8 for case in cases)
     assert all(case.expected_first_state == "ask_attempt" for case in cases)
@@ -257,6 +279,10 @@ def test_canonical_corpus_has_required_count_and_skill_coverage():
         assert verifier_case.verifier is not None
         assert verifier_case.verifier.kind == "linear_equation"
         assert verifier_case.verifier.expected_valid is expected_valid
+
+    m09_07_cases = [case for case in cases if case.id in M09_07_CANONICAL_IDS]
+    assert len(m09_07_cases) == 20
+    assert all(case.verifier is None for case in m09_07_cases)
 
 
 def test_invalid_json_fails(tmp_path):
