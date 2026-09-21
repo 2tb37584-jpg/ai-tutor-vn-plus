@@ -177,15 +177,26 @@ def score_extraction(problem: str, normalized_problem: str) -> MetricResult:
 
 
 def score_skills(expected_skills: tuple[str, ...], actual_skills: list[str]) -> MetricResult:
-    expected = {resolve_skill_code(skill) for skill in expected_skills}
-    actual = {resolve_skill_code(skill) for skill in actual_skills}
+    expected = [resolve_skill_code(skill) for skill in expected_skills]
+    actual = [resolve_skill_code(skill) for skill in actual_skills]
+    expected_primary = expected[0] if len(expected) == 1 else None
+    actual_primary = actual[0] if actual else None
+    extra_skills = actual[1:]
     unknown_actual = UNKNOWN_SKILL_CODE in actual
-    passed = UNKNOWN_SKILL_CODE not in expected and not unknown_actual and expected == actual
+    passed = (
+        expected_primary is not None
+        and expected_primary != UNKNOWN_SKILL_CODE
+        and actual_primary == expected_primary
+        and not unknown_actual
+    )
     return MetricResult(
         "pass" if passed else "fail",
         {
-            "expected": sorted(expected),
-            "actual": sorted(actual),
+            "expected": expected,
+            "expected_primary": expected_primary,
+            "actual_primary": actual_primary,
+            "actual": actual,
+            "extra_skills": extra_skills,
             "unknown_actual_skill": unknown_actual,
         },
     )

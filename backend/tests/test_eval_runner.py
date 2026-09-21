@@ -390,11 +390,124 @@ def test_extraction_uses_ordered_numeric_literal_preservation():
     assert score_extraction("Tìm x", "Tìm biến x").status == "not_scored"
 
 
-def test_skill_classification_canonicalizes_and_rejects_unknown():
-    expected = ("algebra.linear_equation",)
-    assert score_skills(expected, ["linear equation"]).status == "pass"
-    assert score_skills(expected, ["algebra.factorization"]).status == "fail"
-    result = score_skills(expected, ["invented.skill"])
+def test_skill_classification_canonicalizes_primary_skill_aliases():
+    result = score_skills(("algebra.linear_equation",), ["linear equation"])
+
+    assert result.status == "pass"
+    assert result.details["expected_primary"] == "algebra.linear_equation"
+    assert result.details["actual_primary"] == "algebra.linear_equation"
+
+
+def test_skill_classification_passes_exact_primary_match():
+    result = score_skills(("algebra.identity.basic",), ["algebra.identity.basic"])
+
+    assert result.status == "pass"
+    assert result.details["extra_skills"] == []
+
+
+def test_skill_classification_allows_controlled_secondary_skills():
+    result = score_skills(
+        ("algebra.identity.basic",),
+        ["algebra.identity.basic", "algebra.expression.distributive_property"],
+    )
+
+    assert result.status == "pass"
+    assert result.details == {
+        "expected": ["algebra.identity.basic"],
+        "expected_primary": "algebra.identity.basic",
+        "actual_primary": "algebra.identity.basic",
+        "actual": [
+            "algebra.identity.basic",
+            "algebra.expression.distributive_property",
+        ],
+        "extra_skills": ["algebra.expression.distributive_property"],
+        "unknown_actual_skill": False,
+    }
+
+
+def test_skill_classification_rejects_correct_skill_after_wrong_primary():
+    result = score_skills(
+        ("algebra.identity.basic",),
+        ["algebra.expression.distributive_property", "algebra.identity.basic"],
+    )
+
+    assert result.status == "fail"
+    assert result.details["actual_primary"] == "algebra.expression.distributive_property"
+    assert result.details["extra_skills"] == ["algebra.identity.basic"]
+
+
+def test_skill_classification_rejects_unknown_secondary_skill():
+    result = score_skills(
+        ("algebra.identity.basic",),
+        ["algebra.identity.basic", "invented.skill"],
+    )
+
+    assert result.status == "fail"
+    assert result.details["unknown_actual_skill"] is True
+    assert result.details["actual"] == ["algebra.identity.basic", "unknown"]
+
+
+@pytest.mark.parametrize(
+    "actual_skills",
+    [
+        ["invented.skill", "algebra.identity.basic"],
+        [],
+    ],
+)
+def test_skill_classification_rejects_unknown_or_missing_primary(actual_skills):
+    result = score_skills(("algebra.identity.basic",), actual_skills)
+
+    assert result.status == "fail"
+    if not actual_skills:
+        assert result.details["actual_primary"] is None
+
+
+def test_skill_classification_rejects_different_controlled_primary():
+    result = score_skills(
+        ("algebra.linear_equation",),
+        ["algebra.factorization"],
+    )
+
+    assert result.status == "fail"
+    assert result.details["actual_primary"] == "algebra.factorization"
+
+
+def test_skill_classification_preserves_multiple_controlled_extras():
+    result = score_skills(
+        ("algebra.identity.basic",),
+        [
+            "algebra.identity.basic",
+            "algebra.expression.distributive_property",
+            "algebra.expression.simplify",
+        ],
+    )
+
+    assert result.status == "pass"
+    assert result.details["extra_skills"] == [
+        "algebra.expression.distributive_property",
+        "algebra.expression.simplify",
+    ]
+
+
+def test_skill_classification_rejects_multi_skill_expectations():
+    result = score_skills(
+        (
+            "algebra.identity.basic",
+            "algebra.expression.distributive_property",
+        ),
+        ["algebra.identity.basic"],
+    )
+
+    assert result.status == "fail"
+    assert result.details["expected"] == [
+        "algebra.identity.basic",
+        "algebra.expression.distributive_property",
+    ]
+    assert result.details["expected_primary"] is None
+
+
+def test_skill_classification_rejects_unknown_actual_skill():
+    result = score_skills(("algebra.linear_equation",), ["invented.skill"])
     assert result.status == "fail"
     assert result.details["unknown_actual_skill"] is True
 
