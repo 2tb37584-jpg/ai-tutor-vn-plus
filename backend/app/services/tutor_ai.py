@@ -11,6 +11,7 @@ from app.schemas.tutor import (
     TutorTransitionInput,
     TutorTurn,
 )
+from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_state import transition_tutor_state
 
 StructuredModel = TypeVar("StructuredModel", ProblemAnalysis, TutorTurn)
@@ -18,8 +19,7 @@ StructuredModel = TypeVar("StructuredModel", ProblemAnalysis, TutorTurn)
 ANALYZE_PROMPT = """
 You are the diagnostic layer of a Vietnamese tutoring system.
 Extract the exercise accurately. Do not invent missing information.
-Return structured fields only. Skill tags should be stable machine-readable slugs where possible,
-for example: algebra.linear_equation, algebra.factorization, geometry.triangle_similarity.
+Return structured fields only. Follow the controlled skill-code contract provided with this request.
 The expected answer is for internal verification; it will not automatically be shown to the student.
 If the image/text is ambiguous, lower confidence and explain the ambiguity in verification_notes.
 """.strip()
@@ -85,6 +85,18 @@ _STATE_GENERATION_POLICIES = {
 }
 
 
+def _analysis_prompt_with_skill_contract() -> str:
+    controlled_codes = "\n".join(f"- {skill.code}" for skill in get_controlled_skills())
+    return (
+        f"{ANALYZE_PROMPT}\n\n"
+        "For the `skills` field, use ONLY skill codes from the controlled list below. "
+        "Do not invent new skill codes, aliases, synonyms, broader categories, or more-specific "
+        "subskills. Choose the smallest directly relevant skill set. Prefer one primary skill "
+        "when one controlled skill sufficiently describes the exercise.\n"
+        f"Controlled skill codes:\n{controlled_codes}"
+    )
+
+
 class TutorAI:
     def __init__(self):
         self.settings = get_settings()
@@ -119,14 +131,15 @@ class TutorAI:
         if image_data_url:
             content.append({"type": "input_image", "image_url": image_data_url, "detail": "auto"})
 
+        analysis_prompt = _analysis_prompt_with_skill_contract()
         return self._parse_structured(
             ProblemAnalysis,
             responses_input=[
-                {"role": "system", "content": ANALYZE_PROMPT},
+                {"role": "system", "content": analysis_prompt},
                 {"role": "user", "content": content},
             ],
             chat_messages=[
-                {"role": "system", "content": ANALYZE_PROMPT},
+                {"role": "system", "content": analysis_prompt},
                 {
                     "role": "user",
                     "content": [
