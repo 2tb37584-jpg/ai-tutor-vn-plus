@@ -162,6 +162,57 @@ def test_safe_reply_is_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
     assert assistant_messages(db)[-1] == safe.message
 
 
+def test_start_allows_instructional_single_symbol_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    safe = TutorTurn(
+        message="Hãy gom các hạng tử chứa x.",
+        state=TutorState.HINT_1,
+        hint_level=1,
+        reveal_final_answer=False,
+    )
+    fake_ai = FakeTutorAI(safe)
+    fake_ai.analysis = ProblemAnalysis(
+        normalized_problem="Thu gọn 2x + 5 - x - 5.",
+        expected_answer="x",
+    )
+    user, db = start_context(monkeypatch, fake_ai)
+
+    response = start_session(user, db)
+
+    assert response.tutor is safe
+    assert response.tutor.reveal_final_answer is False
+    assert assistant_messages(db) == [safe.message]
+    assert db.session is not None
+    assert db.session.internal_expected_answer == "x"
+
+
+def test_start_blocks_direct_single_symbol_disclosure(monkeypatch: pytest.MonkeyPatch) -> None:
+    leaked = TutorTurn(
+        message="Đáp án là x.",
+        state=TutorState.HINT_1,
+        hint_level=1,
+        likely_correct=False,
+        skill_tags=["algebra.expression.combine_like_terms"],
+        reveal_final_answer=False,
+    )
+    fake_ai = FakeTutorAI(leaked)
+    fake_ai.analysis = ProblemAnalysis(
+        normalized_problem="Thu gọn 2x + 5 - x - 5.",
+        expected_answer="x",
+    )
+    user, db = start_context(monkeypatch, fake_ai)
+
+    response = start_session(user, db)
+
+    assert response.tutor.message == tutor_api._SAFE_TUTOR_FALLBACK
+    assert response.tutor.reveal_final_answer is False
+    assert response.tutor.state is TutorState.HINT_1
+    assert response.tutor.hint_level == 1
+    assert response.tutor.likely_correct is False
+    assert response.tutor.skill_tags == ["algebra.expression.combine_like_terms"]
+    assert assistant_messages(db) == [tutor_api._SAFE_TUTOR_FALLBACK]
+    assert "Đáp án là x" not in assistant_messages(db)[0]
+
+
 def test_complete_reply_bypasses_guard(monkeypatch: pytest.MonkeyPatch) -> None:
     complete = TutorTurn(message="Vậy x=2.", state=TutorState.COMPLETE, reveal_final_answer=True)
     fake_ai = FakeTutorAI(TutorTurn(message="First question", state=TutorState.ASK_ATTEMPT), complete)

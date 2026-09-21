@@ -5,6 +5,7 @@ import unicodedata
 
 
 _NUMERIC_SCALAR = re.compile(r"[+-]?\d+(?:[.,]\d+)?\Z")
+_SINGLE_SYMBOL = re.compile(r"[a-z]\Z")
 _ANSWER_CUE = r"(?:đáp án|kết quả|answer|result)\s*(?:là|is|:|=)?\s*"
 _ASSIGNMENT = r"\b[a-z]\s*=\s*"
 
@@ -34,6 +35,12 @@ def detects_final_answer_leak(
         return bool(
             re.search(_ANSWER_CUE + bounded_answer, text)
             or re.search(_ASSIGNMENT + bounded_answer, text)
+        )
+
+    if _SINGLE_SYMBOL.fullmatch(answer):
+        return bool(
+            re.search(_ANSWER_CUE + bounded_answer, text)
+            or re.fullmatch(rf"[\s().,!?;:]*{re.escape(answer)}[\s().,!?;:]*", text)
         )
 
     return re.search(bounded_answer, text) is not None

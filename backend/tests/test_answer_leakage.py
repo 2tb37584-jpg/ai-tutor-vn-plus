@@ -67,6 +67,38 @@ def test_instructional_use_of_answer_number_is_safe() -> None:
     assert detects_final_answer_leak("Hãy thử cộng 2 vào hai vế.", "2", False) is False
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Hãy gom các hạng tử chứa x.",
+        "Trong 2x + 5 - x - 5, những hạng tử nào cùng loại?",
+        "Em hãy quan sát hệ số của x.",
+    ],
+)
+def test_instructional_single_symbol_references_are_safe(message: str) -> None:
+    assert detects_final_answer_leak(message, "x", False) is False
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Đáp án là x.",
+        "Kết quả là x.",
+        "Answer is x.",
+        "Result = x.",
+        "x",
+        "x.",
+        "(x)",
+    ],
+)
+def test_direct_single_symbol_disclosures_are_detected(message: str) -> None:
+    assert detects_final_answer_leak(message, "x", False) is True
+
+
+def test_single_symbol_model_self_report_remains_an_unconditional_leak() -> None:
+    assert detects_final_answer_leak("Hãy gom các hạng tử chứa x.", "x", True) is True
+
+
 def test_decimal_point_and_comma_are_not_treated_as_equivalent() -> None:
     assert detects_final_answer_leak("Đáp án là 2,5", "2.5", False) is False
     assert detects_final_answer_leak("Đáp án là 2.5", "2,5", False) is False
