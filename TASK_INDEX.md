@@ -35,7 +35,8 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-05 | Evals | Expand Grade 8 algebra eval corpus to 60 cases | DONE | Yes |
 | M09-06 | Evals | Expand Grade 8 algebra eval corpus to 80 cases | DONE | Yes |
 | M09-07 | Evals | Expand Grade 8 algebra eval corpus to 100 cases | DONE | Yes |
-| M09-08 | Evals | Run live model baseline validation | ACTIVE | No |
+| M09-08 | Evals | Run live model baseline validation | BLOCKED | No |
+| M09-08A | Evals | Add OpenAI-compatible provider base URL | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
