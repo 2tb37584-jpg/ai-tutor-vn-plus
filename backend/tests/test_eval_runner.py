@@ -75,18 +75,38 @@ EXPECTED_CANONICAL_IDS = {
     "g8-rational-domain-linear-denominator-001",
     "g8-rational-simplify-difference-squares-001",
     "g8-rational-simplify-factor-001",
+    "g8-signed-numbers-subtract-negative-001",
+    "g8-signed-numbers-order-operations-001",
+    "g8-distributive-leading-subtraction-001",
+    "g8-distributive-fraction-001",
+    "g8-combine-like-terms-implicit-one-001",
+    "g8-combine-like-terms-constants-001",
+    "g8-expression-simplify-leading-minus-001",
+    "g8-expression-simplify-cancel-variable-001",
+    "g8-equivalent-transform-negative-divide-001",
+    "g8-equivalent-transform-multiply-001",
+    "g8-linear-parentheses-verifier-001",
+    "g8-identity-scaled-difference-square-001",
+    "g8-identity-scaled-difference-squares-001",
+    "g8-factor-common-factor-001",
+    "g8-factor-perfect-square-001",
+    "g8-rational-domain-scaled-linear-001",
+    "g8-rational-domain-two-exclusions-001",
+    "g8-rational-simplify-common-factor-001",
+    "g8-rational-simplify-difference-squares-denominator-plus-001",
+    "g8-rational-simplify-trinomial-001",
 }
 EXPECTED_CANONICAL_SKILL_COUNTS = {
-    "arithmetic.signed_number_operations": 4,
-    "algebra.expression.distributive_property": 4,
-    "algebra.expression.combine_like_terms": 4,
-    "algebra.expression.simplify": 4,
-    "algebra.equation.equivalent_transform": 4,
-    "algebra.linear_equation": 5,
-    "algebra.identity.basic": 4,
-    "algebra.factorization": 4,
-    "algebra.rational_expression.domain": 4,
-    "algebra.rational_expression.simplify": 3,
+    "arithmetic.signed_number_operations": 6,
+    "algebra.expression.distributive_property": 6,
+    "algebra.expression.combine_like_terms": 6,
+    "algebra.expression.simplify": 6,
+    "algebra.equation.equivalent_transform": 6,
+    "algebra.linear_equation": 6,
+    "algebra.identity.basic": 6,
+    "algebra.factorization": 6,
+    "algebra.rational_expression.domain": 6,
+    "algebra.rational_expression.simplify": 6,
 }
 
 
@@ -169,7 +189,7 @@ def test_valid_jsonl_loads(tmp_path):
 def test_canonical_corpus_has_required_count_and_skill_coverage():
     cases = load_cases(_canonical_cases_path())
 
-    assert len(cases) == 40
+    assert len(cases) == 60
     assert {case.id for case in cases} == EXPECTED_CANONICAL_IDS
     assert all(case.grade == 8 for case in cases)
     assert all(case.expected_first_state == "ask_attempt" for case in cases)
@@ -191,6 +211,17 @@ def test_canonical_corpus_has_required_count_and_skill_coverage():
     assert negative_verifier_case.verifier is not None
     assert negative_verifier_case.verifier.kind == "linear_equation"
     assert negative_verifier_case.verifier.expected_valid is False
+
+    positive_verifier_case = next(
+        case for case in cases if case.id == "g8-linear-parentheses-verifier-001"
+    )
+    assert positive_verifier_case.verifier is not None
+    assert positive_verifier_case.verifier.kind == "linear_equation"
+    assert positive_verifier_case.verifier.expected_valid is True
+
+    verifier_fixtures = [case.verifier for case in cases if case.verifier is not None]
+    assert len(verifier_fixtures) == 4
+    assert {verifier.kind for verifier in verifier_fixtures} == {"linear_equation"}
 
 
 def test_invalid_json_fails(tmp_path):
