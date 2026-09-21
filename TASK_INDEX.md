@@ -42,7 +42,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-10 | Evals | Prevent single-symbol leakage false positives | DONE | Yes |
 | M09-11 | Evals | Correct over-broad repeated-factor leakage fixture | DONE | No |
 | M09-12 | Evals | Define skill-classification eval semantics | DONE | No |
-| M09-13 | Evals | Align skill classification eval with primary-skill semantics | ACTIVE | Yes |
+| M09-13 | Evals | Align skill classification eval with primary-skill semantics | DONE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
