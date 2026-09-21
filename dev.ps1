@@ -419,23 +419,58 @@ function Get-TaskContext {
 function Test-AcceptanceChecklist {
     param([pscustomobject]$TaskFile)
 
-    $headings = [regex]::Matches($TaskFile.File.Text, '(?m)^## Acceptance checklist[ \t]*(?=\r?$)')
-    if ($headings.Count -ne 1) {
+    $headingCount = 0
+    $inChecklist = $false
+    $checkboxMarks = [System.Collections.Generic.List[string]]::new()
+    $fenceCharacter = $null
+    $fenceLength = 0
+
+    foreach ($line in [regex]::Split($TaskFile.File.Text, '\r\n|\n|\r')) {
+        if ($null -ne $fenceCharacter) {
+            $closingFencePattern = '^[ \t]*' + [regex]::Escape($fenceCharacter) + '{' + $fenceLength + ',}[ \t]*$'
+            if ([regex]::IsMatch($line, $closingFencePattern)) {
+                $fenceCharacter = $null
+                $fenceLength = 0
+            }
+            continue
+        }
+
+        $openingFence = [regex]::Match($line, '^[ \t]*(?<fence>`{3,}|~{3,}).*$')
+        if ($openingFence.Success) {
+            $fenceCharacter = $openingFence.Groups['fence'].Value.Substring(0, 1)
+            $fenceLength = $openingFence.Groups['fence'].Value.Length
+            continue
+        }
+
+        if ([regex]::IsMatch($line, '^## Acceptance checklist[ \t]*$')) {
+            $headingCount += 1
+            $inChecklist = $true
+            continue
+        }
+
+        if ($inChecklist -and [regex]::IsMatch($line, '^##\s+')) {
+            $inChecklist = $false
+            continue
+        }
+
+        if ($inChecklist) {
+            $checkbox = [regex]::Match($line, '^\s*[-*]\s*\[(?<mark>[^\]])\]')
+            if ($checkbox.Success) {
+                $checkboxMarks.Add($checkbox.Groups['mark'].Value)
+            }
+        }
+    }
+
+    if ($headingCount -ne 1) {
         return [pscustomobject]@{ Ok = $false; Reason = "Expected exactly one ## Acceptance checklist section." }
     }
 
-    $sectionStart = $headings[0].Index + $headings[0].Length
-    $remaining = $TaskFile.File.Text.Substring($sectionStart)
-    $nextHeading = [regex]::Match($remaining, '(?m)^##\s+')
-    $section = if ($nextHeading.Success) { $remaining.Substring(0, $nextHeading.Index) } else { $remaining }
-    $checkboxes = [regex]::Matches($section, '(?m)^\s*[-*]\s*\[(?<mark>[^\]])\]')
-
-    if ($checkboxes.Count -eq 0) {
+    if ($checkboxMarks.Count -eq 0) {
         return [pscustomobject]@{ Ok = $false; Reason = "Acceptance checklist has no checkbox items." }
     }
 
-    foreach ($checkbox in $checkboxes) {
-        if ($checkbox.Groups['mark'].Value -cne 'x' -and $checkbox.Groups['mark'].Value -cne 'X') {
+    foreach ($mark in $checkboxMarks) {
+        if ($mark -cne 'x' -and $mark -cne 'X') {
             return [pscustomobject]@{ Ok = $false; Reason = "Acceptance checklist has unchecked items." }
         }
     }
