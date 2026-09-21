@@ -58,10 +58,15 @@ Developer command layer có sẵn tại repository root:
 .\dev.ps1 test full
 .\dev.ps1 review
 .\dev.ps1 snapshot
+.\dev.ps1 task status
+.\dev.ps1 task start Mxx-yy
+.\dev.ps1 task done Mxx-yy
 ```
 
-Các lệnh hiện có chỉ phục vụ kiểm tra và test. Task lifecycle automation như `task status`,
-`task start`, và `task done` chưa được triển khai; chúng thuộc M00-07.
+Lifecycle commands đã được triển khai. `task done` chỉ thành công khi task là ACTIVE duy nhất
+và mọi checkbox trong `## Acceptance checklist` đã được đánh dấu `[x]`. Commands không tự chọn
+task tiếp theo, không gọi live/provider API, và mọi lifecycle change phải được kiểm tra bằng
+`.\dev.ps1 review`.
 
 ### Windows execution policy
 
@@ -184,17 +189,17 @@ Không chạy 100 live cases chỉ để phát hiện lỗi mà unit test có th
 
 ## 4. Task lifecycle automation
 
-Mục tiêu dài hạn là tránh sửa task status thủ công ở nhiều file.
+Task lifecycle automation tránh sửa task status thủ công ở nhiều file.
 
-Interface đề xuất:
+Interface hiện có:
 
-```text
-task status
-task start Mxx-yy
-task done Mxx-yy
+```powershell
+.\dev.ps1 task status
+.\dev.ps1 task start Mxx-yy
+.\dev.ps1 task done Mxx-yy
 ```
 
-Automation nên:
+Automation:
 
 - đọc `TASK_INDEX.md`;
 - xác nhận tối đa một task ACTIVE;
@@ -203,7 +208,8 @@ Automation nên:
 - không tự chọn task mới nếu source of truth chưa chỉ định;
 - không sửa code sản phẩm.
 
-Cho đến khi automation này được implement, tiếp tục cập nhật task-control thủ công và review diff trước commit.
+Sau lifecycle change, chạy `.\dev.ps1 review` trước commit. Không có lifecycle command nào gọi
+live/provider API.
 
 ---
 
