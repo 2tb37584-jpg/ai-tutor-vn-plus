@@ -31,7 +31,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
 | M09-02 | Evals | Add answer-leakage suite | DONE | Yes |
 | M09-03 | Evaluation | Expand Grade 8 algebra eval corpus to 20 cases | DONE | Yes |
-| M09-04 | Evals | Expand Grade 8 algebra eval corpus to 40 cases | ACTIVE | Yes |
+| M09-04 | Evals | Expand Grade 8 algebra eval corpus to 40 cases | DONE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
