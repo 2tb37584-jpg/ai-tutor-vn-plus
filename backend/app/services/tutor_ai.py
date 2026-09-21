@@ -1,4 +1,6 @@
 from __future__ import annotations
+from typing import Any, TypeVar
+
 from openai import OpenAI
 from app.core.config import get_settings
 from app.schemas.tutor import (
@@ -10,6 +12,8 @@ from app.schemas.tutor import (
     TutorTurn,
 )
 from app.services.tutor_state import transition_tutor_state
+
+StructuredModel = TypeVar("StructuredModel", ProblemAnalysis, TutorTurn)
 
 ANALYZE_PROMPT = """
 You are the diagnostic layer of a Vietnamese tutoring system.
@@ -115,15 +119,32 @@ class TutorAI:
         if image_data_url:
             content.append({"type": "input_image", "image_url": image_data_url, "detail": "auto"})
 
-        response = self.client.responses.parse(
-            model=self.settings.openai_model,
-            input=[
+        return self._parse_structured(
+            ProblemAnalysis,
+            responses_input=[
                 {"role": "system", "content": ANALYZE_PROMPT},
                 {"role": "user", "content": content},
             ],
-            text_format=ProblemAnalysis,
+            chat_messages=[
+                {"role": "system", "content": ANALYZE_PROMPT},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": problem_text or "Hãy đọc và phân tích bài tập trong ảnh."},
+                        *(
+                            [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": image_data_url, "detail": "auto"},
+                                }
+                            ]
+                            if image_data_url
+                            else []
+                        ),
+                    ],
+                },
+            ],
         )
-        return response.output_parsed
 
     def first_turn(self, analysis: ProblemAnalysis, grade: int | None) -> TutorTurn:
         if not self.client:
@@ -142,15 +163,18 @@ class TutorAI:
             f"Prerequisites: {', '.join(analysis.prerequisites)}\n"
             "Begin the tutoring session. Do not reveal the final answer yet."
         )
-        response = self.client.responses.parse(
-            model=self.settings.openai_model,
-            input=[
+        turn = self._parse_structured(
+            TutorTurn,
+            responses_input=[
                 {"role": "system", "content": TUTOR_PROMPT},
                 {"role": "user", "content": context},
             ],
-            text_format=TutorTurn,
+            chat_messages=[
+                {"role": "system", "content": TUTOR_PROMPT},
+                {"role": "user", "content": context},
+            ],
         )
-        return self._with_first_turn_state(response.output_parsed)
+        return self._with_first_turn_state(turn)
 
     def continue_turn(
         self,
@@ -204,17 +228,49 @@ class TutorAI:
             f"Recent transcript:\n{transcript}\n\n"
             f"Student's newest message: {student_message}"
         )
-        response = self.client.responses.parse(
-            model=self.settings.openai_model,
-            input=[
+        turn = self._parse_structured(
+            TutorTurn,
+            responses_input=[
                 {"role": "system", "content": TUTOR_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            text_format=TutorTurn,
+            chat_messages=[
+                {"role": "system", "content": TUTOR_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
         )
         if intent is TutorReplyIntent.HINT_REQUEST:
-            return self._normalize_turn(response.output_parsed, target_state)
-        return self._with_continued_turn_state(response.output_parsed, current_state)
+            return self._normalize_turn(turn, target_state)
+        return self._with_continued_turn_state(turn, current_state)
+
+    def _parse_structured(
+        self,
+        expected_model: type[StructuredModel],
+        *,
+        responses_input: list[dict[str, Any]],
+        chat_messages: list[dict[str, Any]],
+    ) -> StructuredModel:
+        api_mode = getattr(self.settings, "openai_api_mode", "responses")
+        if api_mode == "responses":
+            response = self.client.responses.parse(
+                model=self.settings.openai_model,
+                input=responses_input,
+                text_format=expected_model,
+            )
+            return response.output_parsed
+
+        if api_mode == "chat_completions":
+            response = self.client.chat.completions.parse(
+                model=self.settings.openai_model,
+                messages=chat_messages,
+                response_format=expected_model,
+            )
+            parsed = response.choices[0].message.parsed
+            if parsed is None:
+                raise RuntimeError("Chat Completions response did not include parsed output")
+            return parsed
+
+        raise ValueError(f"Unsupported OpenAI API mode: {api_mode}")
 
     @staticmethod
     def _with_first_turn_state(turn: TutorTurn) -> TutorTurn:
