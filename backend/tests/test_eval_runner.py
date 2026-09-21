@@ -1,5 +1,6 @@
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,38 @@ EXPECTED_CANONICAL_IDS = {
     "g8-expression-simplify-002",
     "g8-identity-difference-squares-001",
     "g8-linear-verifier-negative-001",
+    "g8-signed-numbers-mixed-001",
+    "g8-signed-numbers-product-001",
+    "g8-signed-numbers-division-001",
+    "g8-distributive-coefficient-001",
+    "g8-distributive-negative-002",
+    "g8-combine-like-terms-002",
+    "g8-combine-like-terms-negative-001",
+    "g8-expression-simplify-003",
+    "g8-expression-simplify-negative-001",
+    "g8-equivalent-transform-add-001",
+    "g8-equivalent-transform-divide-001",
+    "g8-equivalent-transform-subtract-001",
+    "g8-identity-square-difference-001",
+    "g8-identity-scaled-square-001",
+    "g8-factor-trinomial-002",
+    "g8-factor-difference-squares-001",
+    "g8-rational-domain-positive-001",
+    "g8-rational-domain-linear-denominator-001",
+    "g8-rational-simplify-difference-squares-001",
+    "g8-rational-simplify-factor-001",
+}
+EXPECTED_CANONICAL_SKILL_COUNTS = {
+    "arithmetic.signed_number_operations": 4,
+    "algebra.expression.distributive_property": 4,
+    "algebra.expression.combine_like_terms": 4,
+    "algebra.expression.simplify": 4,
+    "algebra.equation.equivalent_transform": 4,
+    "algebra.linear_equation": 5,
+    "algebra.identity.basic": 4,
+    "algebra.factorization": 4,
+    "algebra.rational_expression.domain": 4,
+    "algebra.rational_expression.simplify": 3,
 }
 
 
@@ -136,7 +169,7 @@ def test_valid_jsonl_loads(tmp_path):
 def test_canonical_corpus_has_required_count_and_skill_coverage():
     cases = load_cases(_canonical_cases_path())
 
-    assert len(cases) == 20
+    assert len(cases) == 40
     assert {case.id for case in cases} == EXPECTED_CANONICAL_IDS
     assert all(case.grade == 8 for case in cases)
     assert all(case.expected_first_state == "ask_attempt" for case in cases)
@@ -148,6 +181,9 @@ def test_canonical_corpus_has_required_count_and_skill_coverage():
     }
     assert represented_skills == REQUIRED_CANONICAL_SKILLS
     assert "general.problem_solving" not in represented_skills
+    assert Counter(
+        skill for case in cases for skill in case.expected_skills
+    ) == EXPECTED_CANONICAL_SKILL_COUNTS
 
     negative_verifier_case = next(
         case for case in cases if case.id == "g8-linear-verifier-negative-001"
