@@ -44,7 +44,13 @@ Không mở task mới khi task ACTIVE hiện tại chưa đạt acceptance crit
 
 Mục tiêu là thay các chuỗi PowerShell lặp đi lặp lại bằng các lệnh ngắn, dễ nhớ.
 
-Interface mục tiêu:
+### Before M00-06
+
+Các lệnh ở đây là các chuỗi PowerShell thủ công; developer command layer chưa tồn tại.
+
+### After M00-06
+
+Developer command layer có sẵn tại repository root:
 
 ```powershell
 .\dev.ps1 status
@@ -53,6 +59,20 @@ Interface mục tiêu:
 .\dev.ps1 review
 .\dev.ps1 snapshot
 ```
+
+Các lệnh hiện có chỉ phục vụ kiểm tra và test. Task lifecycle automation như `task status`,
+`task start`, và `task done` chưa được triển khai; chúng thuộc M00-07.
+
+### Windows execution policy
+
+Nếu PowerShell chặn việc chạy script, dùng override chỉ cho terminal hiện tại:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+```
+
+`Scope Process` chỉ ảnh hưởng PowerShell process hiện tại và tự mất khi đóng terminal.
+Không cần thay đổi execution policy ở cấp machine hoặc user vĩnh viễn.
 
 ### `status`
 
@@ -66,7 +86,11 @@ Nên hiển thị tối thiểu:
 
 ### `test eval`
 
-Chạy targeted tests/eval tests liên quan đến module eval hiện tại.
+Chạy deterministic eval target hiện tại:
+
+```powershell
+docker compose exec backend pytest -q tests/test_eval_runner.py
+```
 
 Không gọi live provider mặc định.
 
@@ -105,6 +129,9 @@ Provider API mode: chat_completions
 Snapshot dùng để bắt đầu chat mới hoặc khôi phục context nhanh.
 
 Không bao giờ ghi API key vào snapshot.
+
+Snapshot chỉ in metadata provider an toàn (`API_MODE`) khi backend Docker đang khả dụng;
+không in `.env`, environment variables, hoặc API key.
 
 ---
 
