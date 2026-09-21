@@ -95,18 +95,38 @@ EXPECTED_CANONICAL_IDS = {
     "g8-rational-simplify-common-factor-001",
     "g8-rational-simplify-difference-squares-denominator-plus-001",
     "g8-rational-simplify-trinomial-001",
+    "g8-signed-numbers-nested-sign-001",
+    "g8-distributive-double-parentheses-001",
+    "g8-distributive-negative-fraction-001",
+    "g8-combine-like-terms-zero-coefficient-001",
+    "g8-expression-simplify-nested-sign-001",
+    "g8-expression-simplify-fraction-coefficient-001",
+    "g8-equivalent-transform-add-variable-001",
+    "g8-equivalent-transform-clear-denominator-001",
+    "g8-linear-both-sides-verifier-001",
+    "g8-linear-fraction-solution-verifier-001",
+    "g8-linear-zero-solution-verifier-001",
+    "g8-linear-verifier-negative-fraction-001",
+    "g8-identity-middle-term-sign-001",
+    "g8-factor-negative-common-factor-001",
+    "g8-factor-leading-coefficient-trinomial-001",
+    "g8-rational-domain-quadratic-denominator-001",
+    "g8-rational-domain-repeated-factor-001",
+    "g8-rational-simplify-negative-factor-001",
+    "g8-rational-simplify-repeated-factor-001",
+    "g8-rational-simplify-coefficient-factor-001",
 }
 EXPECTED_CANONICAL_SKILL_COUNTS = {
-    "arithmetic.signed_number_operations": 6,
-    "algebra.expression.distributive_property": 6,
-    "algebra.expression.combine_like_terms": 6,
-    "algebra.expression.simplify": 6,
-    "algebra.equation.equivalent_transform": 6,
-    "algebra.linear_equation": 6,
-    "algebra.identity.basic": 6,
-    "algebra.factorization": 6,
-    "algebra.rational_expression.domain": 6,
-    "algebra.rational_expression.simplify": 6,
+    "arithmetic.signed_number_operations": 7,
+    "algebra.expression.distributive_property": 8,
+    "algebra.expression.combine_like_terms": 7,
+    "algebra.expression.simplify": 8,
+    "algebra.equation.equivalent_transform": 8,
+    "algebra.linear_equation": 10,
+    "algebra.identity.basic": 7,
+    "algebra.factorization": 8,
+    "algebra.rational_expression.domain": 8,
+    "algebra.rational_expression.simplify": 9,
 }
 
 
@@ -189,7 +209,7 @@ def test_valid_jsonl_loads(tmp_path):
 def test_canonical_corpus_has_required_count_and_skill_coverage():
     cases = load_cases(_canonical_cases_path())
 
-    assert len(cases) == 60
+    assert len(cases) == 80
     assert {case.id for case in cases} == EXPECTED_CANONICAL_IDS
     assert all(case.grade == 8 for case in cases)
     assert all(case.expected_first_state == "ask_attempt" for case in cases)
@@ -220,8 +240,23 @@ def test_canonical_corpus_has_required_count_and_skill_coverage():
     assert positive_verifier_case.verifier.expected_valid is True
 
     verifier_fixtures = [case.verifier for case in cases if case.verifier is not None]
-    assert len(verifier_fixtures) == 4
+    assert len(verifier_fixtures) == 8
     assert {verifier.kind for verifier in verifier_fixtures} == {"linear_equation"}
+    assert Counter(
+        verifier.expected_valid for verifier in verifier_fixtures
+    ) == {True: 6, False: 2}
+
+    expected_verifier_validity = {
+        "g8-linear-verifier-negative-fraction-001": False,
+        "g8-linear-both-sides-verifier-001": True,
+        "g8-linear-fraction-solution-verifier-001": True,
+        "g8-linear-zero-solution-verifier-001": True,
+    }
+    for case_id, expected_valid in expected_verifier_validity.items():
+        verifier_case = next(case for case in cases if case.id == case_id)
+        assert verifier_case.verifier is not None
+        assert verifier_case.verifier.kind == "linear_equation"
+        assert verifier_case.verifier.expected_valid is expected_valid
 
 
 def test_invalid_json_fails(tmp_path):
