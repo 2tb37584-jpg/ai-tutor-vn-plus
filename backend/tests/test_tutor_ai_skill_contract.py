@@ -53,7 +53,31 @@ def test_analysis_contract_restricts_skills_to_the_controlled_list():
     assert "use ONLY skill codes from the controlled list below" in instruction
     assert "Do not invent new skill codes, aliases, synonyms" in instruction
     assert "Choose the smallest directly relevant skill set" in instruction
-    assert "Prefer one primary skill when one controlled skill sufficiently describes" in instruction
+    assert "`skills[0]` is the PRIMARY skill" in instruction
+    assert "Choose exactly one primary skill" in instruction
+    assert "main requested operation or pedagogical objective" in instruction
+    assert "Put supporting or prerequisite skills after the primary" in instruction
+    assert "explicit higher-level target skill" in instruction
+
+
+def test_analysis_contract_orders_target_skills_before_prerequisites():
+    instruction = _analysis_instruction("responses")
+
+    assert "algebra.rational_expression.simplify first" in instruction
+    assert "algebra.rational_expression.domain after it only if relevant" in instruction
+    assert "algebra.expression.simplify first" in instruction
+    assert "algebra.expression.distributive_property and algebra.expression.combine_like_terms" in instruction
+    assert "algebra.identity.basic first" in instruction
+    assert "must not replace the identity objective as primary" in instruction
+
+
+def test_analysis_contract_distinguishes_simplifying_from_distributing():
+    instruction = _analysis_instruction("responses")
+
+    assert "simplify the whole non-rational algebraic expression" in instruction
+    assert "algebra.expression.simplify remains primary even when distribution is a required step" in instruction
+    assert "expand, distribute, or remove parentheses" in instruction
+    assert "algebra.expression.distributive_property may be primary" in instruction
 
 
 def test_invented_skill_codes_are_not_advertised_as_controlled_options():
