@@ -9,7 +9,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M00-03 | Baseline | Establish Alembic migration baseline | DONE | Yes, small |
 | M00-04 | Baseline | Adopt existing dev DB into Alembic baseline | DONE | No |
 | M00-05 | Baseline | Switch runtime schema workflow to Alembic | DONE | Yes, small |
-| M00-06 | Baseline | Developer workflow automation | READY | Yes |
+| M00-06 | Baseline | Developer workflow automation | ACTIVE | Yes |
 | M05-01 | Tutor Engine | Define deterministic tutor state model | DONE | Yes, small |
 | M05-02 | Tutor Engine | Implement state transition rules | DONE | Yes |
 | M05-02A1 | Tutor Engine | Add persisted tutor session state | DONE | Yes, small |
@@ -48,7 +48,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-15 | Evals | Harden primary-skill ordering contract | DONE | Yes |
 | M09-16 | Evals | Define Phase 1 live eval exit gate | DONE | No |
 | M09-17 | Evals | Final Phase 1 100-case live regression | DONE | No |
-| M09-18 | Evals | Refine primary-skill specificity precedence | ACTIVE | Yes |
+| M09-18 | Evals | Refine primary-skill specificity precedence | DONE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
