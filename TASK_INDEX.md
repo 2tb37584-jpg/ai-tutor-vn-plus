@@ -28,7 +28,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M06-01 | Verifier | Harden one-variable linear equation verifier | DONE | Yes |
 | M06-02 | Verifier | Add expression-equivalence verification | DONE | Yes |
 | M06-03 | Verifier | Define solver adapter contract | DONE | No |
-| M06-04 | Verifier | Introduce deterministic verifier adapter seam | READY | Yes |
+| M06-04 | Verifier | Introduce deterministic verifier adapter seam | ACTIVE | Yes |
 | M08-01 | Mastery | Define mastery event contract | DONE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
