@@ -1,10 +1,18 @@
+from typing import cast
+
 import pytest
 
+import app.services.verifier as verifier
 from app.services.verifier import (
+    ExpressionEquivalenceRequest,
+    LinearEquationRequest,
     LinearEquationStatus,
+    ProblemFamily,
+    VerificationStatus,
     classify_linear_equation,
     equivalent,
     solve_simple_equation,
+    verify,
     verify_linear_equation_solution,
 )
 
@@ -102,6 +110,65 @@ def test_rejects_unsafe_characters() -> None:
     assert not equivalent("__import__('os')", "0")
 
 
+def test_expression_verification_adapter_distinguishes_results() -> None:
+    family = ProblemFamily.EXPRESSION_EQUIVALENCE
+
+    assert (
+        verify(ExpressionEquivalenceRequest(family, "(x+1)^2", "x^2+2*x+1")).status
+        is VerificationStatus.CORRECT
+    )
+    assert (
+        verify(ExpressionEquivalenceRequest(family, "x+1", "x+2")).status
+        is VerificationStatus.INCORRECT
+    )
+    assert (
+        verify(ExpressionEquivalenceRequest(family, "x/x", "1")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+    assert (
+        verify(ExpressionEquivalenceRequest(family, "__import__('os')", "0")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+
+
+def test_expression_verification_adapter_handles_unexpected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected verifier failure")
+
+    monkeypatch.setattr(verifier, "simplify", raise_runtime_error)
+
+    result = verify(
+        ExpressionEquivalenceRequest(
+            ProblemFamily.EXPRESSION_EQUIVALENCE,
+            "x+1",
+            "x+1",
+        )
+    )
+
+    assert result.status is VerificationStatus.INDETERMINATE
+
+
+def test_expression_verification_adapter_marks_parse_runtime_failure_indeterminate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected parser failure")
+
+    monkeypatch.setattr(verifier, "_parse_supported_expression", raise_runtime_error)
+
+    result = verify(
+        ExpressionEquivalenceRequest(
+            ProblemFamily.EXPRESSION_EQUIVALENCE,
+            "x+1",
+            "x+1",
+        )
+    )
+
+    assert result.status is VerificationStatus.INDETERMINATE
+
+
 @pytest.mark.parametrize(
     ("equation", "variable", "solution"),
     [
@@ -182,3 +249,65 @@ def test_candidate_requires_valid_unique_supported_equation() -> None:
 
 def test_verifies_supported_y_equation() -> None:
     assert verify_linear_equation_solution("2*y+3=7", "2", variable="y")
+
+
+def test_linear_equation_verification_adapter_distinguishes_results() -> None:
+    family = ProblemFamily.LINEAR_EQUATION
+
+    assert (
+        verify(LinearEquationRequest(family, "2*x+3=7", "2")).status
+        is VerificationStatus.CORRECT
+    )
+    assert (
+        verify(LinearEquationRequest(family, "2*x+3=7", "3")).status
+        is VerificationStatus.INCORRECT
+    )
+    assert (
+        verify(LinearEquationRequest(family, "x^2=4", "2")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+    assert (
+        verify(LinearEquationRequest(family, "2*x+y=7", "2")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+    assert (
+        verify(LinearEquationRequest(family, "x+1=x+1", "2")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+    assert (
+        verify(LinearEquationRequest(family, "2*x+3=7", "x")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+    assert (
+        verify(LinearEquationRequest(family, "2*x+3=7", "1/0")).status
+        is VerificationStatus.UNSUPPORTED
+    )
+
+
+def test_linear_adapter_exposes_internal_failure_without_changing_public_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected simplification failure")
+
+    monkeypatch.setattr(verifier, "simplify", raise_runtime_error)
+
+    assert (
+        verify(LinearEquationRequest(ProblemFamily.LINEAR_EQUATION, "2*x+3=7", "2")).status
+        is VerificationStatus.INDETERMINATE
+    )
+    assert (
+        classify_linear_equation("2*x+3=7").status
+        is LinearEquationStatus.INVALID
+    )
+
+
+def test_verification_router_rejects_unregistered_or_mismatched_family() -> None:
+    unknown_family = cast(ProblemFamily, "unregistered")
+
+    assert verify(
+        ExpressionEquivalenceRequest(unknown_family, "x+1", "x+1")
+    ).status is VerificationStatus.UNSUPPORTED
+    assert verify(
+        LinearEquationRequest(ProblemFamily.EXPRESSION_EQUIVALENCE, "2*x=4", "2")
+    ).status is VerificationStatus.UNSUPPORTED

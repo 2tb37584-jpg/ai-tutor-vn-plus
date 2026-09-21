@@ -19,6 +19,7 @@ from sympy import (
     zoo,
 )
 from sympy.parsing.sympy_parser import convert_xor, parse_expr, standard_transformations
+from sympy.polys.polyerrors import PolynomialError
 
 
 _ALLOWED = re.compile(r"^[0-9xyzXYZ+\-*/^().=\s]+$")
@@ -32,6 +33,48 @@ _PARSE_GLOBALS = {
     "Pow": Pow,
     "Rational": Rational,
 }
+
+
+class ProblemFamily(str, Enum):
+    EXPRESSION_EQUIVALENCE = "expression_equivalence"
+    LINEAR_EQUATION = "linear_equation"
+
+
+class VerificationStatus(str, Enum):
+    CORRECT = "correct"
+    INCORRECT = "incorrect"
+    UNSUPPORTED = "unsupported"
+    INDETERMINATE = "indeterminate"
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    status: VerificationStatus
+
+
+@dataclass(frozen=True)
+class ExpressionEquivalenceRequest:
+    family: ProblemFamily
+    left: str
+    right: str
+
+
+@dataclass(frozen=True)
+class LinearEquationRequest:
+    family: ProblemFamily
+    equation: str
+    candidate: str
+    variable: str = "x"
+
+
+VerificationRequest = ExpressionEquivalenceRequest | LinearEquationRequest
+
+
+class _UnsupportedVerificationInput(Exception):
+    """Expected parser or algebra-domain rejection for adapter verification."""
+
+
+_KNOWN_VALIDATION_ERRORS = (ValueError, TypeError, SyntaxError, PolynomialError)
 
 
 class LinearEquationStatus(str, Enum):
@@ -118,6 +161,31 @@ def _parse_supported_expression(text: str) -> Expr:
     return expression
 
 
+def _verify_expression_equivalence(
+    request: ExpressionEquivalenceRequest,
+) -> VerificationResult:
+    try:
+        left_expression = _parse_supported_expression(request.left)
+        right_expression = _parse_supported_expression(request.right)
+    except _KNOWN_VALIDATION_ERRORS:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    try:
+        difference = simplify(left_expression - right_expression)
+        if _is_non_finite(difference):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        status = (
+            VerificationStatus.CORRECT
+            if difference == 0
+            else VerificationStatus.INCORRECT
+        )
+        return VerificationResult(status)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+
 def equivalent(left: str, right: str) -> bool:
     """Compare finite polynomial school-algebra expressions deterministically."""
     try:
@@ -129,42 +197,56 @@ def equivalent(left: str, right: str) -> bool:
         return False
 
 
-def classify_linear_equation(equation: str, variable: str = "x") -> LinearEquationResult:
-    """Classify a supported one-variable linear equation without raising parse errors."""
+def _classify_linear_equation_detailed(
+    equation: str,
+    variable: str = "x",
+) -> LinearEquationResult:
     if variable not in _SYMBOLS or equation.count("=") != 1:
-        return LinearEquationResult(LinearEquationStatus.INVALID)
+        raise _UnsupportedVerificationInput
 
     lhs_text, rhs_text = equation.split("=", 1)
     if not lhs_text.strip() or not rhs_text.strip():
-        return LinearEquationResult(LinearEquationStatus.INVALID)
+        raise _UnsupportedVerificationInput
 
     symbol = _SYMBOLS[variable]
     try:
         lhs = _parse_safe(lhs_text, evaluate=False)
         rhs = _parse_safe(rhs_text, evaluate=False)
-        if (lhs.free_symbols | rhs.free_symbols) - {symbol}:
-            return LinearEquationResult(LinearEquationStatus.INVALID)
-        if _has_unsupported_denominator(lhs, symbol) or _has_unsupported_denominator(rhs, symbol):
-            return LinearEquationResult(LinearEquationStatus.INVALID)
+    except _KNOWN_VALIDATION_ERRORS as error:
+        raise _UnsupportedVerificationInput from error
 
-        difference = simplify(lhs - rhs)
-        if _is_non_finite(difference):
-            return LinearEquationResult(LinearEquationStatus.INVALID)
-        if difference == 0:
-            return LinearEquationResult(LinearEquationStatus.INFINITELY_MANY_SOLUTIONS)
+    if (lhs.free_symbols | rhs.free_symbols) - {symbol}:
+        raise _UnsupportedVerificationInput
+    if _has_unsupported_denominator(lhs, symbol) or _has_unsupported_denominator(rhs, symbol):
+        raise _UnsupportedVerificationInput
 
+    difference = simplify(lhs - rhs)
+    if _is_non_finite(difference):
+        raise _UnsupportedVerificationInput
+    if difference == 0:
+        return LinearEquationResult(LinearEquationStatus.INFINITELY_MANY_SOLUTIONS)
+
+    try:
         polynomial = Poly(difference, symbol)
-        degree = polynomial.degree()
-        if degree > 1:
-            return LinearEquationResult(LinearEquationStatus.INVALID)
-        if degree == 0:
-            return LinearEquationResult(LinearEquationStatus.NO_SOLUTION)
+    except PolynomialError as error:
+        raise _UnsupportedVerificationInput from error
+    degree = polynomial.degree()
+    if degree > 1:
+        return LinearEquationResult(LinearEquationStatus.INVALID)
+    if degree == 0:
+        return LinearEquationResult(LinearEquationStatus.NO_SOLUTION)
 
-        coefficient, constant = polynomial.all_coeffs()
-        if any(_is_non_finite(value) or value.is_finite is not True for value in (coefficient, constant)):
-            return LinearEquationResult(LinearEquationStatus.INVALID)
-        solution = simplify(-constant / coefficient)
-        return LinearEquationResult(LinearEquationStatus.UNIQUE_SOLUTION, solution)
+    coefficient, constant = polynomial.all_coeffs()
+    if any(_is_non_finite(value) or value.is_finite is not True for value in (coefficient, constant)):
+        raise _UnsupportedVerificationInput
+    solution = simplify(-constant / coefficient)
+    return LinearEquationResult(LinearEquationStatus.UNIQUE_SOLUTION, solution)
+
+
+def classify_linear_equation(equation: str, variable: str = "x") -> LinearEquationResult:
+    """Classify a supported one-variable linear equation without raising parse errors."""
+    try:
+        return _classify_linear_equation_detailed(equation, variable)
     except Exception:
         return LinearEquationResult(LinearEquationStatus.INVALID)
 
@@ -194,3 +276,53 @@ def solve_simple_equation(equation: str, variable: str = "x") -> list[str]:
     if result.status is LinearEquationStatus.UNIQUE_SOLUTION and result.solution is not None:
         return [str(result.solution)]
     return []
+
+
+def _verify_linear_equation(request: LinearEquationRequest) -> VerificationResult:
+    try:
+        result = _classify_linear_equation_detailed(
+            request.equation,
+            request.variable,
+        )
+    except _UnsupportedVerificationInput:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    if result.status is not LinearEquationStatus.UNIQUE_SOLUTION or result.solution is None:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+
+    try:
+        candidate_value = _parse_safe(request.candidate)
+    except _KNOWN_VALIDATION_ERRORS:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    if candidate_value.free_symbols or candidate_value.is_finite is not True:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    if _is_non_finite(result.solution):
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+
+    try:
+        status = (
+            VerificationStatus.CORRECT
+            if simplify(candidate_value - result.solution) == 0
+            else VerificationStatus.INCORRECT
+        )
+        return VerificationResult(status)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+
+def verify(request: VerificationRequest) -> VerificationResult:
+    """Route an explicitly classified deterministic verification request."""
+    if request.family is ProblemFamily.EXPRESSION_EQUIVALENCE:
+        if not isinstance(request, ExpressionEquivalenceRequest):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        return _verify_expression_equivalence(request)
+    if request.family is ProblemFamily.LINEAR_EQUATION:
+        if not isinstance(request, LinearEquationRequest):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        return _verify_linear_equation(request)
+    return VerificationResult(VerificationStatus.UNSUPPORTED)
