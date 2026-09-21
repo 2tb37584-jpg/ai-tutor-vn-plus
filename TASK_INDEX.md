@@ -46,7 +46,8 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-14 | Evals | Audit residual post-fix live eval failures | DONE | No |
 | M09-15 | Evals | Harden primary-skill ordering contract | DONE | Yes |
 | M09-16 | Evals | Define Phase 1 live eval exit gate | DONE | No |
-| M09-17 | Evals | Final Phase 1 100-case live regression | ACTIVE | No |
+| M09-17 | Evals | Final Phase 1 100-case live regression | DONE | No |
+| M09-18 | Evals | Refine primary-skill specificity precedence | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
