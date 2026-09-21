@@ -44,7 +44,8 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-12 | Evals | Define skill-classification eval semantics | DONE | No |
 | M09-13 | Evals | Align skill classification eval with primary-skill semantics | DONE | Yes |
 | M09-14 | Evals | Audit residual post-fix live eval failures | DONE | No |
-| M09-15 | Evals | Harden primary-skill ordering contract | ACTIVE | Yes |
+| M09-15 | Evals | Harden primary-skill ordering contract | DONE | Yes |
+| M09-16 | Evals | Define Phase 1 live eval exit gate | ACTIVE | No |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
