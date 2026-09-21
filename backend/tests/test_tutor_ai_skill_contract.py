@@ -80,6 +80,17 @@ def test_analysis_contract_distinguishes_simplifying_from_distributing():
     assert "algebra.expression.distributive_property may be primary" in instruction
 
 
+def test_analysis_contract_prefers_sufficient_specific_skills():
+    instruction = _analysis_instruction("responses")
+
+    assert "specific controlled skill completely describes the explicit learner objective" in instruction
+    assert "collects like terms uses algebra.expression.combine_like_terms as primary" in instruction
+    assert "not algebra.expression.simplify" in instruction
+    assert "multiple expression transformations or broader simplification is the objective" in instruction
+    assert "named basic identity is explicitly requested to rewrite an expression as a product" in instruction
+    assert "algebra.identity.basic is primary and algebra.factorization may be secondary" in instruction
+
+
 def test_invented_skill_codes_are_not_advertised_as_controlled_options():
     instruction = _analysis_instruction("responses")
 
