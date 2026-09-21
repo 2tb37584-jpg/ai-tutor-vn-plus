@@ -39,8 +39,8 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-08A | Evals | Add OpenAI-compatible provider base URL | DONE | Yes |
 | M09-08B | Evals | Add configurable structured API mode | DONE | Yes |
 | M09-09 | Evals | Constrain problem-analysis skills to controlled registry | DONE | Yes |
-| M09-10 | Evals | Prevent single-symbol leakage false positives | ACTIVE | Yes |
-| M09-11 | Evals | Correct over-broad repeated-factor leakage fixture | READY | No |
+| M09-10 | Evals | Prevent single-symbol leakage false positives | DONE | Yes |
+| M09-11 | Evals | Correct over-broad repeated-factor leakage fixture | ACTIVE | No |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
