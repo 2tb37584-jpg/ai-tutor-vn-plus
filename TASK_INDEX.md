@@ -33,6 +33,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-03 | Evaluation | Expand Grade 8 algebra eval corpus to 20 cases | DONE | Yes |
 | M09-04 | Evals | Expand Grade 8 algebra eval corpus to 40 cases | DONE | Yes |
 | M09-05 | Evals | Expand Grade 8 algebra eval corpus to 60 cases | DONE | Yes |
+| M09-06 | Evals | Expand Grade 8 algebra eval corpus to 80 cases | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
