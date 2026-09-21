@@ -84,7 +84,18 @@ _STATE_GENERATION_POLICIES = {
 class TutorAI:
     def __init__(self):
         self.settings = get_settings()
-        self.client = OpenAI(api_key=self.settings.openai_api_key) if self.settings.openai_api_key else None
+        if not self.settings.openai_api_key:
+            self.client = None
+            return
+
+        base_url = self.settings.openai_base_url.strip()
+        if base_url:
+            self.client = OpenAI(
+                api_key=self.settings.openai_api_key,
+                base_url=base_url,
+            )
+        else:
+            self.client = OpenAI(api_key=self.settings.openai_api_key)
 
     def analyze_problem(self, problem_text: str, image_data_url: str | None = None) -> ProblemAnalysis:
         if not self.client:

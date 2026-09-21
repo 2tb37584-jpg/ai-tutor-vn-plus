@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:3000"
     database_url: str = "postgresql+psycopg://aitutor:aitutor@db:5432/aitutor"
     openai_api_key: str = ""
+    openai_base_url: str = ""
     openai_model: str = "gpt-5.6-terra"
     openai_reasoning_effort: str = "low"
     access_token_minutes: int = 60 * 24 * 7
