@@ -405,3 +405,37 @@ Workflow mới được coi là có ích khi:
 - live API credits không bị tiêu cho lỗi deterministic;
 - Codex task vẫn nhỏ và reviewable;
 - source of truth vẫn là Git repository.
+
+---
+
+## 13. Direction and scope guardrails
+
+Before creating or starting a new implementation task, record:
+
+- Roadmap link
+- Core-loop impact
+- Why now
+- Why not defer
+- Exit criterion affected
+
+A task should normally proceed only when it directly advances the current roadmap phase, closes core-loop integration debt, fixes a measured regression/blocker, satisfies an acceptance/exit criterion, or is supported by concrete eval/product evidence.
+
+### Integration-first rule
+
+Once module contracts are stable, prefer end-to-end wiring and integration tests/evals over creating new abstractions, adapters, policy layers, or feature families.
+
+### Evidence-before-expansion rule
+
+Do not add a new domain, verifier family, UI surface, dependency, service, or subsystem merely because it may be useful later. Require concrete evidence such as an eval case, measured failure, user need, core-loop blocker, or roadmap requirement.
+
+### Documentation proportionality
+
+Use long architecture/audit documents only for material decisions involving architecture, schema/data model, security/privacy, mastery semantics, tutor behavior, verification semantics, or provider integration. Ordinary scoped implementation tasks should stay concise.
+
+### Abstraction gate
+
+Do not create a new service, adapter, resolver, interface, or shared abstraction unless it removes real duplicated logic, enforces an important product/safety invariant, establishes a necessary typed boundary, or is required by multiple current callers.
+
+### Module-exit gate
+
+Before moving to a new module or feature family, check whether the current core-loop module still has material integration debt. Unit-tested components are not considered fully integrated when the roadmap requires them to participate in the live product flow.
