@@ -7,6 +7,7 @@ from app.services.verifier import (
     ExpressionEquivalenceRequest,
     LinearEquationRequest,
     LinearEquationStatus,
+    NumericVerificationRequest,
     ProblemFamily,
     VerificationStatus,
     classify_linear_equation,
@@ -310,4 +311,91 @@ def test_verification_router_rejects_unregistered_or_mismatched_family() -> None
     ).status is VerificationStatus.UNSUPPORTED
     assert verify(
         LinearEquationRequest(ProblemFamily.EXPRESSION_EQUIVALENCE, "2*x=4", "2")
+    ).status is VerificationStatus.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    ("expected", "candidate"),
+    [
+        ("4", "4"),
+        ("-8", "-8"),
+        ("1/2", "0.5"),
+        ("0.1", "1/10"),
+        ("3/2", "1.5"),
+        ("3.14", "3.140"),
+        (" 1/2 ", "0.5"),
+    ],
+)
+def test_numeric_verification_adapter_compares_exact_values(
+    expected: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        NumericVerificationRequest(ProblemFamily.NUMERIC, expected, candidate)
+    )
+
+    assert result.status is VerificationStatus.CORRECT
+
+
+def test_numeric_verification_adapter_reports_different_values() -> None:
+    assert (
+        verify(NumericVerificationRequest(ProblemFamily.NUMERIC, "3", "4")).status
+        is VerificationStatus.INCORRECT
+    )
+    assert (
+        verify(NumericVerificationRequest(ProblemFamily.NUMERIC, "0.333", "1/3")).status
+        is VerificationStatus.INCORRECT
+    )
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "1/0",
+        "x",
+        "1+2",
+        "sqrt(2)",
+        "pi",
+        "1e-3",
+        "25%",
+        "3 cm",
+        "NaN",
+        "Infinity",
+        "1,5",
+        "[1,2]",
+        "1 < 2",
+        "(1,2)",
+        "1+2i",
+        "1 1/2",
+    ],
+)
+def test_numeric_verification_adapter_rejects_unsupported_literals(literal: str) -> None:
+    result = verify(
+        NumericVerificationRequest(ProblemFamily.NUMERIC, "1", literal)
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_numeric_verification_adapter_handles_unexpected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected numeric parser failure")
+
+    monkeypatch.setattr(verifier, "_parse_exact_numeric_literal", raise_runtime_error)
+
+    result = verify(NumericVerificationRequest(ProblemFamily.NUMERIC, "1", "1"))
+
+    assert result.status is VerificationStatus.INDETERMINATE
+
+
+def test_numeric_verification_router_rejects_mismatched_or_unknown_family() -> None:
+    unknown_family = cast(ProblemFamily, "unregistered")
+
+    assert verify(
+        NumericVerificationRequest(ProblemFamily.EXPRESSION_EQUIVALENCE, "1", "1")
+    ).status is VerificationStatus.UNSUPPORTED
+    assert verify(
+        NumericVerificationRequest(unknown_family, "1", "1")
     ).status is VerificationStatus.UNSUPPORTED

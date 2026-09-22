@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
 from enum import Enum
+from fractions import Fraction
 
 from sympy import (
     Add,
@@ -23,6 +24,7 @@ from sympy.polys.polyerrors import PolynomialError
 
 
 _ALLOWED = re.compile(r"^[0-9xyzXYZ+\-*/^().=\s]+$")
+_NUMERIC_LITERAL = re.compile(r"^[+-]?(?:\d+|\d+\.\d+|\d+/\d+)$")
 _TRANSFORMS = standard_transformations + (convert_xor,)
 _SYMBOLS = {name: Symbol(name) for name in ("x", "y", "z")}
 _PARSE_GLOBALS = {
@@ -38,6 +40,7 @@ _PARSE_GLOBALS = {
 class ProblemFamily(str, Enum):
     EXPRESSION_EQUIVALENCE = "expression_equivalence"
     LINEAR_EQUATION = "linear_equation"
+    NUMERIC = "numeric"
 
 
 class VerificationStatus(str, Enum):
@@ -67,7 +70,16 @@ class LinearEquationRequest:
     variable: str = "x"
 
 
-VerificationRequest = ExpressionEquivalenceRequest | LinearEquationRequest
+@dataclass(frozen=True)
+class NumericVerificationRequest:
+    family: ProblemFamily
+    expected: str
+    candidate: str
+
+
+VerificationRequest = (
+    ExpressionEquivalenceRequest | LinearEquationRequest | NumericVerificationRequest
+)
 
 
 class _UnsupportedVerificationInput(Exception):
@@ -289,6 +301,7 @@ def _verify_linear_equation(request: LinearEquationRequest) -> VerificationResul
     except Exception:
         return VerificationResult(VerificationStatus.INDETERMINATE)
 
+
     if result.status is not LinearEquationStatus.UNIQUE_SOLUTION or result.solution is None:
         return VerificationResult(VerificationStatus.UNSUPPORTED)
 
@@ -315,6 +328,37 @@ def _verify_linear_equation(request: LinearEquationRequest) -> VerificationResul
         return VerificationResult(VerificationStatus.INDETERMINATE)
 
 
+def _parse_exact_numeric_literal(text: str) -> Fraction:
+    if not isinstance(text, str):
+        raise _UnsupportedVerificationInput
+
+    literal = text.strip()
+    if not _NUMERIC_LITERAL.fullmatch(literal):
+        raise _UnsupportedVerificationInput
+
+    try:
+        return Fraction(literal)
+    except (ValueError, ZeroDivisionError) as error:
+        raise _UnsupportedVerificationInput from error
+
+
+def _verify_numeric(request: NumericVerificationRequest) -> VerificationResult:
+    try:
+        expected = _parse_exact_numeric_literal(request.expected)
+        candidate = _parse_exact_numeric_literal(request.candidate)
+    except _UnsupportedVerificationInput:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    status = (
+        VerificationStatus.CORRECT
+        if expected == candidate
+        else VerificationStatus.INCORRECT
+    )
+    return VerificationResult(status)
+
+
 def verify(request: VerificationRequest) -> VerificationResult:
     """Route an explicitly classified deterministic verification request."""
     if request.family is ProblemFamily.EXPRESSION_EQUIVALENCE:
@@ -325,4 +369,8 @@ def verify(request: VerificationRequest) -> VerificationResult:
         if not isinstance(request, LinearEquationRequest):
             return VerificationResult(VerificationStatus.UNSUPPORTED)
         return _verify_linear_equation(request)
+    if request.family is ProblemFamily.NUMERIC:
+        if not isinstance(request, NumericVerificationRequest):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        return _verify_numeric(request)
     return VerificationResult(VerificationStatus.UNSUPPORTED)
