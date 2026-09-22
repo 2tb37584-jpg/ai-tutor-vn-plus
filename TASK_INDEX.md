@@ -35,7 +35,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M06-08 | Verifier | Define analyzer/verifier disagreement escalation policy | DONE | No |
 | M06-09 | Verifier | Add verification decision policy resolver | DONE | Yes |
 | M06-10 | Verifier | Persist trusted verifier family context | DONE | Yes |
-| M06-11 | Verifier | Wire deterministic verification into tutor reply | ACTIVE | Yes |
+| M06-11 | Verifier | Wire deterministic verification into tutor reply | DONE | Yes |
 | M08-01 | Mastery | Define mastery event contract | DONE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
