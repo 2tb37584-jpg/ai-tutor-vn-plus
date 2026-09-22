@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,6 +50,7 @@ from app.services.verifier import (
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
+logger = logging.getLogger(__name__)
 _SAFE_TUTOR_FALLBACK = "Em hãy tiếp tục từ bước em đang làm và giải thích vì sao bước đó hợp lý. Thầy/cô sẽ giúp em kiểm tra."
 
 
@@ -258,13 +260,17 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
             payload.student_message,
         )
         if verification_request is not None:
+            verification_result = verify(verification_request)
+            retry_count = 0
             decision = resolve_verification_decision(
-                verify(verification_request).status,
+                verification_result.status,
                 tutor_turn.likely_correct,
             )
             if decision.action is EscalationAction.RETRY_DETERMINISTIC:
+                retry_count = 1
+                verification_result = verify(verification_request)
                 decision = resolve_verification_decision(
-                    verify(verification_request).status,
+                    verification_result.status,
                     tutor_turn.likely_correct,
                     retry_count=1,
                 )
@@ -275,7 +281,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                     decision.correctness,
                 ),
             )
-            if (
+            mastery_eligible = (
                 current_state
                 in {
                     TutorState.ASK_ATTEMPT,
@@ -284,7 +290,24 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                 }
                 and decision.correctness
                 in {EffectiveCorrectness.CORRECT, EffectiveCorrectness.INCORRECT}
-            ):
+            )
+            logger.info(
+                "event=tutor_verification_decision session_id=%s skill_code=%s "
+                "problem_family=%s verifier_status=%s model_likely_correct=%s "
+                "disagreement=%s retry_count=%s escalation_outcome=%s "
+                "mastery_eligible=%s verification_method=%s",
+                session.id,
+                session.primary_skill,
+                verification_request.family.value,
+                verification_result.status.value,
+                str(tutor_turn.likely_correct).lower(),
+                str(decision.disagreement).lower(),
+                retry_count,
+                decision.action.value,
+                str(mastery_eligible).lower(),
+                session.verification_family,
+            )
+            if mastery_eligible:
                 record_mastery_evidence(
                     db,
                     MasteryEvidenceEvent(
