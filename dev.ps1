@@ -167,7 +167,7 @@ function Invoke-Tests {
     }
 
     if ($Suite -eq "eval") {
-        & docker compose exec backend pytest -q tests/test_eval_runner.py
+        & docker compose exec backend pytest -q tests/test_eval_runner.py tests/test_verifier_benchmark.py
     }
     else {
         & docker compose exec backend pytest -q
