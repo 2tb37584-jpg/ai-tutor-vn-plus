@@ -14,7 +14,15 @@ from typing import Any, Literal, Protocol
 from app.schemas.tutor import ProblemAnalysis, TutorTurn
 from app.services.answer_leakage import detects_final_answer_leak
 from app.services.skill_registry import UNKNOWN_SKILL_CODE, resolve_skill_code
-from app.services.verifier import verify_linear_equation_solution
+from app.services.verifier import (
+    ExpressionEquivalenceRequest,
+    LinearEquationRequest,
+    NumericVerificationRequest,
+    ProblemFamily,
+    VerificationRequest,
+    VerificationStatus,
+    verify,
+)
 
 
 METRIC_NAMES = (
@@ -24,7 +32,9 @@ METRIC_NAMES = (
     "verifier_correctness",
     "tutor_state_correctness",
 )
-_SUPPORTED_VERIFIER_KIND = "linear_equation"
+_LEGACY_VERIFIER_KIND = "linear_equation"
+_CANONICAL_VERIFIER_KEYS = {"family", "reference", "candidate", "expected_status"}
+_LEGACY_VERIFIER_KEYS = {"kind", "equation", "candidate", "expected_valid"}
 _NUMBER_LITERAL = re.compile(r"(?<!\d)\d+(?:[.,]\d+)?(?!\d)")
 
 
@@ -34,10 +44,10 @@ class FixtureError(ValueError):
 
 @dataclass(frozen=True)
 class VerifierFixture:
-    kind: str
-    equation: str
+    family: str
+    reference: str
     candidate: str
-    expected_valid: bool
+    expected_status: str
 
 
 @dataclass(frozen=True)
@@ -81,24 +91,42 @@ def _parse_verifier(value: Any, line_number: int) -> VerifierFixture | None:
         return None
     if not isinstance(value, dict):
         raise FixtureError(f"Line {line_number}: verifier must be an object")
-    required = {"kind", "equation", "candidate", "expected_valid"}
-    if set(value) != required:
+    keys = set(value)
+    if keys == _CANONICAL_VERIFIER_KEYS:
+        family = value["family"]
+        reference = value["reference"]
+        candidate = value["candidate"]
+        expected_status = value["expected_status"]
+        try:
+            ProblemFamily(family)
+            VerificationStatus(expected_status)
+        except (TypeError, ValueError) as exc:
+            raise FixtureError(f"Line {line_number}: malformed verifier block") from exc
+    elif keys == _LEGACY_VERIFIER_KEYS:
+        kind = value["kind"]
+        reference = value["equation"]
+        candidate = value["candidate"]
+        expected_valid = value["expected_valid"]
+        if kind != _LEGACY_VERIFIER_KIND:
+            raise FixtureError(f"Line {line_number}: unsupported verifier kind: {kind!r}")
+        if not isinstance(expected_valid, bool):
+            raise FixtureError(f"Line {line_number}: malformed verifier block")
+        family = ProblemFamily.LINEAR_EQUATION.value
+        expected_status = (
+            VerificationStatus.CORRECT.value
+            if expected_valid
+            else VerificationStatus.INCORRECT.value
+        )
+    else:
         raise FixtureError(f"Line {line_number}: malformed verifier block")
-    kind = value.get("kind")
-    if kind != _SUPPORTED_VERIFIER_KIND:
-        raise FixtureError(f"Line {line_number}: unsupported verifier kind: {kind!r}")
-    equation = value.get("equation")
-    candidate = value.get("candidate")
-    expected_valid = value.get("expected_valid")
     if (
-        not isinstance(equation, str)
-        or not equation.strip()
+        not isinstance(reference, str)
+        or not reference.strip()
         or not isinstance(candidate, str)
         or not candidate.strip()
-        or not isinstance(expected_valid, bool)
     ):
         raise FixtureError(f"Line {line_number}: malformed verifier block")
-    return VerifierFixture(kind, equation, candidate, expected_valid)
+    return VerifierFixture(family, reference, candidate, expected_status)
 
 
 def load_cases(path: str | Path) -> tuple[EvalCase, ...]:
@@ -231,10 +259,34 @@ def score_leakage(case: EvalCase, first_turn: TutorTurn) -> MetricResult:
 def score_verifier(verifier: VerifierFixture | None) -> MetricResult:
     if verifier is None:
         return MetricResult("not_scored", {"reason": "no_verifier_fixture"})
-    actual = verify_linear_equation_solution(verifier.equation, verifier.candidate)
+    family = ProblemFamily(verifier.family)
+    request: VerificationRequest
+    if family is ProblemFamily.LINEAR_EQUATION:
+        request = LinearEquationRequest(
+            family=family,
+            equation=verifier.reference,
+            candidate=verifier.candidate,
+        )
+    elif family is ProblemFamily.EXPRESSION_EQUIVALENCE:
+        request = ExpressionEquivalenceRequest(
+            family=family,
+            left=verifier.reference,
+            right=verifier.candidate,
+        )
+    else:
+        request = NumericVerificationRequest(
+            family=family,
+            expected=verifier.reference,
+            candidate=verifier.candidate,
+        )
+    actual_status = verify(request).status.value
     return MetricResult(
-        "pass" if actual == verifier.expected_valid else "fail",
-        {"expected_valid": verifier.expected_valid, "actual_valid": actual},
+        "pass" if actual_status == verifier.expected_status else "fail",
+        {
+            "family": verifier.family,
+            "expected_status": verifier.expected_status,
+            "actual_status": actual_status,
+        },
     )
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services import eval_runner
 from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTurn
 from app.services.eval_runner import (
     METRIC_NAMES,
@@ -17,7 +18,15 @@ from app.services.eval_runner import (
     score_leakage,
     score_skills,
     score_tutor_state,
+    score_verifier,
     summarize_metrics,
+)
+from app.services.verifier import (
+    ExpressionEquivalenceRequest,
+    LinearEquationRequest,
+    NumericVerificationRequest,
+    VerificationResult,
+    VerificationStatus,
 )
 
 
@@ -251,34 +260,34 @@ def test_canonical_corpus_has_required_count_and_skill_coverage():
         case for case in cases if case.id == "g8-linear-verifier-negative-001"
     )
     assert negative_verifier_case.verifier is not None
-    assert negative_verifier_case.verifier.kind == "linear_equation"
-    assert negative_verifier_case.verifier.expected_valid is False
+    assert negative_verifier_case.verifier.family == "linear_equation"
+    assert negative_verifier_case.verifier.expected_status == "incorrect"
 
     positive_verifier_case = next(
         case for case in cases if case.id == "g8-linear-parentheses-verifier-001"
     )
     assert positive_verifier_case.verifier is not None
-    assert positive_verifier_case.verifier.kind == "linear_equation"
-    assert positive_verifier_case.verifier.expected_valid is True
+    assert positive_verifier_case.verifier.family == "linear_equation"
+    assert positive_verifier_case.verifier.expected_status == "correct"
 
     verifier_fixtures = [case.verifier for case in cases if case.verifier is not None]
     assert len(verifier_fixtures) == 8
-    assert {verifier.kind for verifier in verifier_fixtures} == {"linear_equation"}
+    assert {verifier.family for verifier in verifier_fixtures} == {"linear_equation"}
     assert Counter(
-        verifier.expected_valid for verifier in verifier_fixtures
-    ) == {True: 6, False: 2}
+        verifier.expected_status for verifier in verifier_fixtures
+    ) == {"correct": 6, "incorrect": 2}
 
-    expected_verifier_validity = {
-        "g8-linear-verifier-negative-fraction-001": False,
-        "g8-linear-both-sides-verifier-001": True,
-        "g8-linear-fraction-solution-verifier-001": True,
-        "g8-linear-zero-solution-verifier-001": True,
+    expected_verifier_status = {
+        "g8-linear-verifier-negative-fraction-001": "incorrect",
+        "g8-linear-both-sides-verifier-001": "correct",
+        "g8-linear-fraction-solution-verifier-001": "correct",
+        "g8-linear-zero-solution-verifier-001": "correct",
     }
-    for case_id, expected_valid in expected_verifier_validity.items():
+    for case_id, expected_status in expected_verifier_status.items():
         verifier_case = next(case for case in cases if case.id == case_id)
         assert verifier_case.verifier is not None
-        assert verifier_case.verifier.kind == "linear_equation"
-        assert verifier_case.verifier.expected_valid is expected_valid
+        assert verifier_case.verifier.family == "linear_equation"
+        assert verifier_case.verifier.expected_status == expected_status
 
     m09_07_cases = [case for case in cases if case.id in M09_07_CANONICAL_IDS]
     assert len(m09_07_cases) == 20
@@ -336,7 +345,69 @@ def test_non_object_and_blank_lines_fail(tmp_path):
     "verifier, message",
     [
         ({"kind": "linear_equation"}, "malformed verifier"),
+        (
+            {"family": "numeric", "reference": "1", "candidate": "1"},
+            "malformed verifier",
+        ),
         ({"kind": "factorization", "equation": "x=1", "candidate": "1", "expected_valid": True}, "unsupported verifier kind"),
+        (
+            {
+                "family": "unsupported",
+                "reference": "1",
+                "candidate": "1",
+                "expected_status": "correct",
+            },
+            "malformed verifier",
+        ),
+        (
+            {
+                "family": "numeric",
+                "reference": "1",
+                "candidate": "1",
+                "expected_status": "invalid",
+            },
+            "malformed verifier",
+        ),
+        (
+            {
+                "family": "numeric",
+                "reference": " ",
+                "candidate": "1",
+                "expected_status": "correct",
+            },
+            "malformed verifier",
+        ),
+        (
+            {
+                "family": "numeric",
+                "reference": "1",
+                "candidate": " ",
+                "expected_status": "correct",
+            },
+            "malformed verifier",
+        ),
+        (
+            {
+                "family": "numeric",
+                "reference": "1",
+                "candidate": "1",
+                "expected_status": "correct",
+                "extra": "field",
+            },
+            "malformed verifier",
+        ),
+        (
+            {
+                "family": "numeric",
+                "reference": "1",
+                "candidate": "1",
+                "expected_status": "correct",
+                "kind": "linear_equation",
+                "equation": "x=1",
+                "expected_valid": True,
+            },
+            "malformed verifier",
+        ),
     ],
 )
 def test_invalid_verifier_block_fails(tmp_path, verifier, message):
@@ -344,8 +415,90 @@ def test_invalid_verifier_block_fails(tmp_path, verifier, message):
         load_cases(_write_cases(tmp_path, _record(verifier=verifier)))
 
 
-def test_offline_never_invokes_ai_and_scores_verifier():
-    verifier = VerifierFixture("linear_equation", "2*x+3=11", "4", True)
+@pytest.mark.parametrize(
+    ("family", "reference", "candidate"),
+    [
+        ("linear_equation", "2*x+3=11", "4"),
+        ("expression_equivalence", "x + x", "2*x"),
+        ("numeric", "1/2", "0.5"),
+    ],
+)
+def test_canonical_verifier_fixture_parses(tmp_path, family, reference, candidate):
+    cases = load_cases(
+        _write_cases(
+            tmp_path,
+            _record(
+                verifier={
+                    "family": family,
+                    "reference": reference,
+                    "candidate": candidate,
+                    "expected_status": "correct",
+                }
+            ),
+        )
+    )
+
+    assert cases[0].verifier == VerifierFixture(family, reference, candidate, "correct")
+
+
+@pytest.mark.parametrize("expected_status", ["correct", "incorrect", "unsupported", "indeterminate"])
+def test_canonical_verifier_statuses_parse(tmp_path, expected_status):
+    cases = load_cases(
+        _write_cases(
+            tmp_path,
+            _record(
+                verifier={
+                    "family": "numeric",
+                    "reference": "1/2",
+                    "candidate": "0.5",
+                    "expected_status": expected_status,
+                }
+            ),
+        )
+    )
+
+    assert cases[0].verifier is not None
+    assert cases[0].verifier.expected_status == expected_status
+
+
+@pytest.mark.parametrize(
+    ("expected_valid", "expected_status"),
+    [(True, "correct"), (False, "incorrect")],
+)
+def test_legacy_linear_verifier_fixture_normalizes_status(
+    tmp_path,
+    expected_valid,
+    expected_status,
+):
+    cases = load_cases(
+        _write_cases(
+            tmp_path,
+            _record(
+                verifier={
+                    "kind": "linear_equation",
+                    "equation": "2*x+3=11",
+                    "candidate": "4",
+                    "expected_valid": expected_valid,
+                }
+            ),
+        )
+    )
+
+    assert cases[0].verifier == VerifierFixture(
+        "linear_equation",
+        "2*x+3=11",
+        "4",
+        expected_status,
+    )
+
+
+def test_offline_never_invokes_ai_and_scores_verifier(monkeypatch):
+    verifier = VerifierFixture("linear_equation", "2*x+3=11", "4", "correct")
+    monkeypatch.setattr(
+        eval_runner,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
     ai = FakeAI()
     report = run_cases((_case(verifier=verifier),), mode="offline", ai=ai)
     assert ai.calls == []
@@ -358,13 +511,97 @@ def test_offline_never_invokes_ai_and_scores_verifier():
     )
 
 
-def test_verifier_mismatch_fails_without_crashing():
-    verifier = VerifierFixture("linear_equation", "2*x+3=11", "5", True)
-    report = run_cases((_case(verifier=verifier),), mode="offline")
-    assert report["cases"][0]["metrics"]["verifier_correctness"]["status"] == "fail"
+@pytest.mark.parametrize(
+    ("fixture", "request_type", "request_fields"),
+    [
+        (
+            VerifierFixture("linear_equation", "2*x+3=11", "4", "correct"),
+            LinearEquationRequest,
+            {"equation": "2*x+3=11", "candidate": "4"},
+        ),
+        (
+            VerifierFixture("expression_equivalence", "x + x", "2*x", "correct"),
+            ExpressionEquivalenceRequest,
+            {"left": "x + x", "right": "2*x"},
+        ),
+        (
+            VerifierFixture("numeric", "1/2", "0.5", "correct"),
+            NumericVerificationRequest,
+            {"expected": "1/2", "candidate": "0.5"},
+        ),
+    ],
+)
+def test_score_verifier_constructs_typed_request(
+    monkeypatch,
+    fixture,
+    request_type,
+    request_fields,
+):
+    requests = []
+    monkeypatch.setattr(
+        eval_runner,
+        "verify",
+        lambda request: requests.append(request) or VerificationResult(VerificationStatus.CORRECT),
+    )
+
+    result = score_verifier(fixture)
+
+    assert isinstance(requests[0], request_type)
+    assert requests[0].family.value == fixture.family
+    assert {
+        field: getattr(requests[0], field)
+        for field in request_fields
+    } == request_fields
+    assert result.status == "pass"
+    assert result.details == {
+        "family": fixture.family,
+        "expected_status": "correct",
+        "actual_status": "correct",
+    }
+
+
+def test_verifier_mismatch_fails_without_crashing(monkeypatch):
+    verifier = VerifierFixture("linear_equation", "2*x+3=11", "5", "correct")
+    monkeypatch.setattr(
+        eval_runner,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.INCORRECT),
+    )
+
+    result = score_verifier(verifier)
+
+    assert result.status == "fail"
+    assert result.details["actual_status"] == "incorrect"
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        VerificationStatus.CORRECT,
+        VerificationStatus.INCORRECT,
+        VerificationStatus.UNSUPPORTED,
+        VerificationStatus.INDETERMINATE,
+    ],
+)
+def test_verifier_matching_production_status_passes(monkeypatch, status):
+    fixture = VerifierFixture("numeric", "1/2", "0.5", status.value)
+    monkeypatch.setattr(
+        eval_runner,
+        "verify",
+        lambda _request: VerificationResult(status),
+    )
+
+    result = score_verifier(fixture)
+
+    assert result.status == "pass"
+    assert result.details["expected_status"] == status.value
+    assert result.details["actual_status"] == status.value
 
 
 def test_no_verifier_is_not_scored():
+    result = score_verifier(None)
+    assert result.status == "not_scored"
+    assert result.details == {"reason": "no_verifier_fixture"}
     report = run_cases((_case(),), mode="offline")
     assert report["cases"][0]["metrics"]["verifier_correctness"]["status"] == "not_scored"
 
@@ -622,7 +859,7 @@ def test_live_metric_failures_remain_in_report():
 
 
 def test_live_execution_error_is_isolated_and_later_case_still_runs():
-    verifier = VerifierFixture("linear_equation", "2*x+3=11", "4", True)
+    verifier = VerifierFixture("linear_equation", "2*x+3=11", "4", "correct")
 
     class SelectivelyFailingAI(FakeAI):
         def analyze_problem(self, problem_text, image_data_url=None):
