@@ -61,7 +61,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-16 | Evals | Define Phase 1 live eval exit gate | DONE | No |
 | M09-17 | Evals | Final Phase 1 100-case live regression | DONE | No |
 | M09-18 | Evals | Refine primary-skill specificity precedence | DONE | Yes |
-| M09-19 | Evals | Upgrade verifier eval harness to typed verifier contract | READY | Yes |
+| M09-19 | Evals | Upgrade verifier eval harness to typed verifier contract | ACTIVE | Yes |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
