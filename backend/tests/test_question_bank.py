@@ -1,5 +1,5 @@
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import FrozenInstanceError, asdict
 
 import pytest
 
@@ -25,7 +25,7 @@ from app.services.verifier import (
 )
 
 
-def valid_records() -> list[dict[str, str]]:
+def valid_records() -> list[dict[str, object]]:
     return [asdict(question) for question in get_all_questions()]
 
 
@@ -40,12 +40,16 @@ def test_production_bank_has_valid_balanced_questions() -> None:
         "expression_equivalence": 4,
         "linear_equation": 4,
     }
+    assert Counter(question.difficulty for question in questions) == {1: 5, 2: 7}
     for question in questions:
         assert isinstance(question, QuestionBankItem)
         assert all(
             isinstance(value, str) and value.strip()
-            for value in asdict(question).values()
+            for field, value in asdict(question).items()
+            if field != "difficulty"
         )
+        assert isinstance(question.difficulty, int)
+        assert question.difficulty in {1, 2, 3}
         assert question.verification_reference.strip()
         assert resolve_skill_code(question.skill_code) == question.skill_code
         assert is_mastery_bearing_skill(question.skill_code)
@@ -100,6 +104,13 @@ def test_get_all_questions_preserves_declaration_order() -> None:
     ]
 
 
+def test_question_bank_items_are_frozen() -> None:
+    question = get_all_questions()[0]
+
+    with pytest.raises(FrozenInstanceError):
+        question.difficulty = 3  # type: ignore[misc]
+
+
 def test_get_question_uses_exact_id_lookup() -> None:
     question = get_question("g8alg.linear-equation.001")
 
@@ -134,9 +145,16 @@ def test_duplicate_question_id_is_rejected() -> None:
     "mutation",
     [
         lambda records: records[0].pop("verification_reference"),
+        lambda records: records[0].pop("difficulty"),
         lambda records: records[0].update({"extra": "field"}),
         lambda records: records[0].update({"problem_text": " "}),
         lambda records: records[0].update({"verification_reference": " "}),
+        lambda records: records[0].update({"difficulty": "1"}),
+        lambda records: records[0].update({"difficulty": 1.5}),
+        lambda records: records[0].update({"difficulty": 0}),
+        lambda records: records[0].update({"difficulty": 4}),
+        lambda records: records[0].update({"difficulty": True}),
+        lambda records: records[0].update({"difficulty": False}),
         lambda records: records[0].update({"skill_code": "unknown.skill"}),
         lambda records: records[0].update({"skill_code": "linear equation"}),
         lambda records: records[0].update({"verification_family": "manual_or_future"}),

@@ -28,6 +28,7 @@ _REQUIRED_FIELDS = {
     "verification_reference",
     "expected_answer",
     "verification_family",
+    "difficulty",
 }
 _SUPPORTED_FAMILIES = {
     "numeric",
@@ -45,6 +46,7 @@ class QuestionBankItem:
     verification_reference: str
     expected_answer: str
     verification_family: str
+    difficulty: int
 
 
 def _verification_request(item: QuestionBankItem) -> VerificationRequest:
@@ -78,8 +80,16 @@ def _build_question_bank(records: Any) -> tuple[QuestionBankItem, ...]:
     for record in records:
         if not isinstance(record, dict) or set(record) != _REQUIRED_FIELDS:
             raise ValueError("Question bank record has invalid fields")
-        if any(not isinstance(value, str) or not value.strip() for value in record.values()):
+        if any(
+            not isinstance(record[field], str) or not record[field].strip()
+            for field in _REQUIRED_FIELDS - {"difficulty"}
+        ):
             raise ValueError("Question bank fields must be non-empty strings")
+        difficulty = record["difficulty"]
+        if isinstance(difficulty, bool) or not isinstance(difficulty, int):
+            raise ValueError("Question difficulty must be an integer")
+        if difficulty not in {1, 2, 3}:
+            raise ValueError("Question difficulty must be between 1 and 3")
 
         question_id = record["id"]
         if question_id in ids:
