@@ -60,6 +60,7 @@ class TutorSession(Base):
     status: Mapped[str] = mapped_column(String(32), default="active")
     current_state: Mapped[str] = mapped_column(String(32), nullable=False, default="ask_attempt")
     internal_expected_answer: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    verification_family: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

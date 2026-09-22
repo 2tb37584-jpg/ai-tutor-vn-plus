@@ -23,8 +23,10 @@ from app.schemas.tutor import (
 )
 from app.services.answer_leakage import detects_final_answer_leak
 from app.services.session_summary import InvalidTutorSessionState, summarize_tutor_session
+from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_ai import TutorAI
 from app.services.tutor_state import InvalidTutorTransition, transition_tutor_state
+from app.services.verifier import ProblemFamily
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
@@ -41,6 +43,17 @@ def _guard_tutor_turn(turn: TutorTurn, expected_answer: str) -> TutorTurn:
     if not detects_final_answer_leak(turn.message, expected_answer, turn.reveal_final_answer):
         return turn
     return turn.model_copy(update={"message": _SAFE_TUTOR_FALLBACK, "reveal_final_answer": False})
+
+
+def _verification_family_for_primary_skill(primary_skill: str) -> str | None:
+    for skill in get_controlled_skills():
+        if skill.code != primary_skill:
+            continue
+        try:
+            return ProblemFamily(skill.verifier_family).value
+        except ValueError:
+            return None
+    return None
 
 
 def owned_student(db: Session, user: User, student_id: int) -> Student:
@@ -74,6 +87,7 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
         normalized_problem=analysis.normalized_problem,
         primary_skill=primary_skill,
         internal_expected_answer=analysis.expected_answer,
+        verification_family=_verification_family_for_primary_skill(primary_skill),
     )
     db.add(session)
     db.flush()
