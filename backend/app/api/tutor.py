@@ -26,7 +26,19 @@ from app.services.session_summary import InvalidTutorSessionState, summarize_tut
 from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_ai import TutorAI
 from app.services.tutor_state import InvalidTutorTransition, transition_tutor_state
-from app.services.verifier import ProblemFamily
+from app.services.verification_policy import (
+    EffectiveCorrectness,
+    EscalationAction,
+    resolve_verification_decision,
+)
+from app.services.verifier import (
+    ExpressionEquivalenceRequest,
+    LinearEquationRequest,
+    NumericVerificationRequest,
+    ProblemFamily,
+    VerificationRequest,
+    verify,
+)
 
 router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
@@ -54,6 +66,70 @@ def _verification_family_for_primary_skill(primary_skill: str) -> str | None:
         except ValueError:
             return None
     return None
+
+
+def _verification_request_for_session(
+    session: TutorSession,
+    candidate: str,
+) -> VerificationRequest | None:
+    try:
+        family = ProblemFamily(session.verification_family)
+    except (TypeError, ValueError):
+        return None
+
+    if family is ProblemFamily.NUMERIC:
+        return NumericVerificationRequest(
+            family=family,
+            expected=session.internal_expected_answer,
+            candidate=candidate,
+        )
+    if family is ProblemFamily.EXPRESSION_EQUIVALENCE:
+        return ExpressionEquivalenceRequest(
+            family=family,
+            left=session.internal_expected_answer,
+            right=candidate,
+        )
+    if family is ProblemFamily.LINEAR_EQUATION:
+        return LinearEquationRequest(
+            family=family,
+            equation=session.normalized_problem,
+            candidate=candidate,
+        )
+    return None
+
+
+def _authoritative_state_for_correctness(
+    current_state: TutorState,
+    correctness: EffectiveCorrectness,
+) -> TutorState:
+    if correctness is EffectiveCorrectness.UNKNOWN:
+        return current_state
+
+    correct_events = {
+        TutorState.ASK_ATTEMPT: TutorTransitionEvent.ATTEMPT_CORRECT,
+        TutorState.HINT_1: TutorTransitionEvent.ATTEMPT_CORRECT,
+        TutorState.HINT_2: TutorTransitionEvent.ATTEMPT_CORRECT,
+        TutorState.VERIFY: TutorTransitionEvent.VERIFIED,
+    }
+    incorrect_events = {
+        TutorState.ASK_ATTEMPT: TutorTransitionEvent.ATTEMPT_INCORRECT,
+        TutorState.HINT_1: TutorTransitionEvent.ATTEMPT_INCORRECT,
+        TutorState.HINT_2: TutorTransitionEvent.ATTEMPT_INCORRECT,
+        TutorState.VERIFY: TutorTransitionEvent.VERIFICATION_FAILED,
+    }
+    event = (
+        correct_events.get(current_state)
+        if correctness is EffectiveCorrectness.CORRECT
+        else incorrect_events.get(current_state)
+    )
+    if event is None:
+        return current_state
+    return transition_tutor_state(TutorTransitionInput(state=current_state, event=event))
+
+
+def _turn_with_authoritative_state(turn: TutorTurn, state: TutorState) -> TutorTurn:
+    hint_level = 1 if state is TutorState.HINT_1 else 2 if state is TutorState.HINT_2 else 0
+    return turn.model_copy(update={"state": state, "hint_level": hint_level})
 
 
 def owned_student(db: Session, user: User, student_id: int) -> Student:
@@ -169,6 +245,29 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
         tutor_turn = ai.continue_turn(**turn_arguments, intent=payload.intent)
     else:
         tutor_turn = ai.continue_turn(**turn_arguments)
+
+        verification_request = _verification_request_for_session(
+            session,
+            payload.student_message,
+        )
+        if verification_request is not None:
+            decision = resolve_verification_decision(
+                verify(verification_request).status,
+                tutor_turn.likely_correct,
+            )
+            if decision.action is EscalationAction.RETRY_DETERMINISTIC:
+                decision = resolve_verification_decision(
+                    verify(verification_request).status,
+                    tutor_turn.likely_correct,
+                    retry_count=1,
+                )
+            tutor_turn = _turn_with_authoritative_state(
+                tutor_turn,
+                _authoritative_state_for_correctness(
+                    current_state,
+                    decision.correctness,
+                ),
+            )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))

@@ -48,14 +48,16 @@ class FakeTutorAI:
         self,
         reply_states: list[TutorState],
         first_turn_state: TutorState = TutorState.ASK_ATTEMPT,
+        analysis_skills: list[str] | None = None,
     ) -> None:
         self.reply_states = iter(reply_states)
         self.first_turn_state = first_turn_state
+        self.analysis_skills = analysis_skills or ["algebra.linear_equation"]
         self.received_states: list[TutorState] = []
         self.continue_calls = 0
 
     def analyze_problem(self, problem_text: str, image_data_url: str | None = None) -> ProblemAnalysis:
-        return ProblemAnalysis(normalized_problem=problem_text, skills=["algebra.linear_equation"])
+        return ProblemAnalysis(normalized_problem=problem_text, skills=self.analysis_skills)
 
     def first_turn(self, analysis: ProblemAnalysis, grade: int | None) -> TutorTurn:
         return TutorTurn(message="First question", state=self.first_turn_state)
@@ -111,9 +113,14 @@ def test_start_persists_state_returned_by_tutor_ai(monkeypatch: pytest.MonkeyPat
 
 def test_replies_pass_and_persist_state_across_requests(monkeypatch: pytest.MonkeyPatch) -> None:
     user, _, db = tutor_context()
-    fake_ai = FakeTutorAI([TutorState.HINT_1, TutorState.HINT_2])
+    fake_ai = FakeTutorAI(
+        [TutorState.HINT_1, TutorState.HINT_2],
+        analysis_skills=["unknown.skill"],
+    )
     monkeypatch.setattr(tutor_api, "ai", fake_ai)
     session_id = start_session(user, db)
+
+    assert db.sessions[session_id].verification_family is None
 
     tutor_api.tutor_reply(TutorReplyRequest(session_id=session_id, student_message="x = 3"), user, db)
     assert db.sessions[session_id].current_state == "hint_1"
