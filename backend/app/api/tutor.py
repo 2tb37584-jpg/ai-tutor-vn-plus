@@ -22,6 +22,13 @@ from app.schemas.tutor import (
     TutorTurn,
 )
 from app.services.answer_leakage import detects_final_answer_leak
+from app.services.mastery import (
+    MasteryEvidenceEvent,
+    MasteryEvidenceType,
+    MasteryOutcome,
+    VerificationStatus as MasteryVerificationStatus,
+    record_mastery_evidence,
+)
 from app.services.session_summary import InvalidTutorSessionState, summarize_tutor_session
 from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_ai import TutorAI
@@ -268,6 +275,39 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                     decision.correctness,
                 ),
             )
+            if (
+                current_state
+                in {
+                    TutorState.ASK_ATTEMPT,
+                    TutorState.HINT_1,
+                    TutorState.HINT_2,
+                }
+                and decision.correctness
+                in {EffectiveCorrectness.CORRECT, EffectiveCorrectness.INCORRECT}
+            ):
+                record_mastery_evidence(
+                    db,
+                    MasteryEvidenceEvent(
+                        student_id=session.student_id,
+                        session_id=session.id,
+                        skill_code=session.primary_skill,
+                        outcome=(
+                            MasteryOutcome.CORRECT
+                            if decision.correctness is EffectiveCorrectness.CORRECT
+                            else MasteryOutcome.INCORRECT
+                        ),
+                        evidence_type=MasteryEvidenceType.DETERMINISTIC_VERIFICATION,
+                        verification_status=MasteryVerificationStatus.VERIFIED,
+                        verification_method=session.verification_family,
+                        confidence=1.0,
+                        hint_count={
+                            TutorState.ASK_ATTEMPT: 0,
+                            TutorState.HINT_1: 1,
+                            TutorState.HINT_2: 2,
+                        }[current_state],
+                        is_transfer=False,
+                    ),
+                )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
