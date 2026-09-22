@@ -30,7 +30,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M06-03 | Verifier | Define solver adapter contract | DONE | No |
 | M06-04 | Verifier | Introduce deterministic verifier adapter seam | DONE | Yes |
 | M06-05 | Verifier | Define numeric/unit verification contract | DONE | No |
-| M06-06 | Verifier | Add exact numeric verification adapter | ACTIVE | Yes |
+| M06-06 | Verifier | Add exact numeric verification adapter | DONE | Yes |
 | M08-01 | Mastery | Define mastery event contract | DONE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
