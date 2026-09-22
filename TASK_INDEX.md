@@ -26,7 +26,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | DONE | Mostly ChatGPT |
 | M07-02 | Skill Graph | Implement controlled skill registry | DONE | Yes |
 | M07-03 | Skill Graph | Expose curriculum prerequisite graph queries | DONE | Yes |
-| M07-04 | Skill Graph | Seed supported-domain question bank v1 | READY | Yes |
+| M07-04 | Skill Graph | Seed supported-domain question bank v1 | ACTIVE | Yes |
 | M06-01 | Verifier | Harden one-variable linear equation verifier | DONE | Yes |
 | M06-02 | Verifier | Add expression-equivalence verification | DONE | Yes |
 | M06-03 | Verifier | Define solver adapter contract | DONE | No |
