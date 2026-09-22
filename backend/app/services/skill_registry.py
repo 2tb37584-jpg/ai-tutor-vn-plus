@@ -126,6 +126,26 @@ def get_controlled_skills() -> tuple[SkillDefinition, ...]:
     return _REGISTRY.skills
 
 
+def get_skill_definition(code: str) -> SkillDefinition | None:
+    for skill in _REGISTRY.skills:
+        if skill.code == code:
+            return skill
+    return None
+
+
+def get_direct_prerequisites(code: str) -> tuple[str, ...]:
+    skill = get_skill_definition(code)
+    return skill.prerequisites if skill is not None else ()
+
+
+def get_direct_dependents(code: str) -> tuple[str, ...]:
+    return tuple(
+        skill.code
+        for skill in _REGISTRY.skills
+        if code in skill.prerequisites
+    )
+
+
 def resolve_skill_code(label: str) -> str:
     return _REGISTRY.resolve(label)
 

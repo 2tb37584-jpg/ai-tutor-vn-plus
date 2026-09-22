@@ -4,6 +4,9 @@ from app.services.skill_registry import (
     UNKNOWN_SKILL_CODE,
     _build_registry,
     get_controlled_skills,
+    get_direct_dependents,
+    get_direct_prerequisites,
+    get_skill_definition,
     is_mastery_bearing_skill,
     resolve_skill_code,
 )
@@ -45,6 +48,57 @@ def test_unknown_and_reserved_labels_do_not_create_skills() -> None:
     assert not is_mastery_bearing_skill(UNKNOWN_SKILL_CODE)
     assert not is_mastery_bearing_skill("general.problem_solving")
     assert is_mastery_bearing_skill("algebra.linear_equation")
+
+
+def test_get_skill_definition_requires_a_canonical_code() -> None:
+    definition = get_skill_definition("algebra.linear_equation")
+
+    assert definition is not None
+    assert definition.code == "algebra.linear_equation"
+    assert get_skill_definition("invented.mystery_skill") is None
+    assert get_skill_definition("linear equation") is None
+
+
+def test_direct_prerequisites_are_ordered_immutable_tuples() -> None:
+    assert get_direct_prerequisites("arithmetic.signed_number_operations") == ()
+    assert get_direct_prerequisites("algebra.expression.distributive_property") == (
+        "arithmetic.signed_number_operations",
+    )
+    assert get_direct_prerequisites("algebra.expression.simplify") == (
+        "algebra.expression.distributive_property",
+        "algebra.expression.combine_like_terms",
+    )
+    prerequisites = get_direct_prerequisites("algebra.rational_expression.simplify")
+    assert prerequisites == (
+        "algebra.factorization",
+        "algebra.rational_expression.domain",
+    )
+    assert isinstance(prerequisites, tuple)
+
+
+def test_direct_prerequisites_reject_unknown_and_alias_codes() -> None:
+    assert get_direct_prerequisites("invented.mystery_skill") == ()
+    assert get_direct_prerequisites("linear equation") == ()
+
+
+def test_direct_dependents_preserve_taxonomy_order() -> None:
+    dependents = get_direct_dependents("arithmetic.signed_number_operations")
+
+    assert dependents == (
+        "algebra.expression.distributive_property",
+        "algebra.expression.combine_like_terms",
+    )
+    assert isinstance(dependents, tuple)
+    assert get_direct_dependents("algebra.expression.simplify") == (
+        "algebra.equation.equivalent_transform",
+        "algebra.factorization",
+    )
+
+
+def test_direct_dependents_reject_leaf_unknown_and_alias_codes() -> None:
+    assert get_direct_dependents("algebra.rational_expression.simplify") == ()
+    assert get_direct_dependents("invented.mystery_skill") == ()
+    assert get_direct_dependents("linear equation") == ()
 
 
 def test_all_prerequisites_are_controlled_skills() -> None:
