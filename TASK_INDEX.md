@@ -45,6 +45,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
 | M08-04 | Mastery | Add pure spaced-review scheduling policy | DONE | Yes |
+| M08-05 | Mastery | Add deterministic next-best-question policy | READY | Yes |
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
 | M09-02 | Evals | Add answer-leakage suite | DONE | Yes |
 | M09-03 | Evaluation | Expand Grade 8 algebra eval corpus to 20 cases | DONE | Yes |
