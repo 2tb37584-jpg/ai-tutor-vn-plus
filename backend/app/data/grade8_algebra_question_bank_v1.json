@@ -10,5 +10,7 @@
   {"id":"g8alg.linear-equation.001","skill_code":"algebra.linear_equation","problem_text":"Giải phương trình x + 5 = 12.","verification_reference":"x+5=12","expected_answer":"7","verification_family":"linear_equation","difficulty":1},
   {"id":"g8alg.linear-equation.002","skill_code":"algebra.linear_equation","problem_text":"Giải phương trình 2x - 3 = 9.","verification_reference":"2*x-3=9","expected_answer":"6","verification_family":"linear_equation","difficulty":2},
   {"id":"g8alg.equivalent-transform.001","skill_code":"algebra.equation.equivalent_transform","problem_text":"Giải phương trình 3(x - 1) = 12.","verification_reference":"3*(x-1)=12","expected_answer":"5","verification_family":"linear_equation","difficulty":2},
-  {"id":"g8alg.equivalent-transform.002","skill_code":"algebra.equation.equivalent_transform","problem_text":"Giải phương trình -x + 4 = 10.","verification_reference":"-x+4=10","expected_answer":"-6","verification_family":"linear_equation","difficulty":2}
+  {"id":"g8alg.equivalent-transform.002","skill_code":"algebra.equation.equivalent_transform","problem_text":"Giải phương trình -x + 4 = 10.","verification_reference":"-x+4=10","expected_answer":"-6","verification_family":"linear_equation","difficulty":2},
+  {"id":"g8alg.factorization.001","skill_code":"algebra.factorization","problem_text":"Phân tích đa thức x^2 - 9 thành nhân tử.","verification_reference":"x^2-9","expected_answer":"(x-3)*(x+3)","verification_family":"factorization","difficulty":2},
+  {"id":"g8alg.rational-expression-domain.001","skill_code":"algebra.rational_expression.domain","problem_text":"Tìm điều kiện xác định của phân thức (x+1)/(x-2).","verification_reference":"2","expected_answer":"x != 2","verification_family":"domain_condition","difficulty":1}
 ]

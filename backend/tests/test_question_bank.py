@@ -1,7 +1,8 @@
 from collections import Counter
-from dataclasses import FrozenInstanceError, asdict
+from dataclasses import FrozenInstanceError, asdict, replace
 
 import pytest
+import app.services.question_bank as question_bank
 
 from app.services.question_bank import (
     QuestionBankItem,
@@ -12,12 +13,15 @@ from app.services.question_bank import (
     get_questions_for_skill,
 )
 from app.services.skill_registry import (
+    get_controlled_skills,
     get_skill_definition,
     is_mastery_bearing_skill,
     resolve_skill_code,
 )
 from app.services.verifier import (
+    DomainConditionVerificationRequest,
     ExpressionEquivalenceRequest,
+    FactorizationVerificationRequest,
     LinearEquationRequest,
     NumericVerificationRequest,
     VerificationStatus,
@@ -29,18 +33,15 @@ def valid_records() -> list[dict[str, object]]:
     return [asdict(question) for question in get_all_questions()]
 
 
-def test_production_bank_has_valid_balanced_questions() -> None:
+def test_production_bank_has_valid_authored_questions() -> None:
     questions = get_all_questions()
 
     assert isinstance(questions, tuple)
-    assert len(questions) == 12
-    assert len({question.id for question in questions}) == 12
-    assert Counter(question.verification_family for question in questions) == {
-        "numeric": 4,
-        "expression_equivalence": 4,
-        "linear_equation": 4,
-    }
-    assert Counter(question.difficulty for question in questions) == {1: 5, 2: 7}
+    assert len(questions) > 12
+    assert len({question.id for question in questions}) == len(questions)
+    family_counts = Counter(question.verification_family for question in questions)
+    assert family_counts["factorization"] >= 1
+    assert family_counts["domain_condition"] >= 1
     for question in questions:
         assert isinstance(question, QuestionBankItem)
         assert all(
@@ -63,12 +64,56 @@ def test_production_questions_self_verify_as_correct() -> None:
         assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
 
 
+def test_all_deterministic_transfer_eligible_skills_are_covered() -> None:
+    eligible_families = {
+        "numeric",
+        "expression_equivalence",
+        "linear_equation",
+        "factorization",
+        "domain_condition",
+    }
+    eligible_skills = {
+        skill.code
+        for skill in get_controlled_skills()
+        if is_mastery_bearing_skill(skill.code)
+        and skill.verifier_family in eligible_families
+    }
+    covered_skills = {question.skill_code for question in get_all_questions()}
+
+    assert eligible_skills <= covered_skills
+    assert "algebra.rational_expression.simplify" not in eligible_skills
+
+
+def test_non_mastery_supported_family_is_not_required_for_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing_skills = tuple(question_bank.get_controlled_skills())
+    source_skill = get_skill_definition("arithmetic.signed_number_operations")
+    assert source_skill is not None
+    non_mastery_skill = replace(source_skill, code="general.non_mastery_numeric")
+
+    monkeypatch.setattr(
+        question_bank,
+        "get_controlled_skills",
+        lambda: existing_skills + (non_mastery_skill,),
+    )
+    monkeypatch.setattr(
+        question_bank,
+        "is_mastery_bearing_skill",
+        lambda skill_code: skill_code != non_mastery_skill.code,
+    )
+
+    assert len(question_bank._build_question_bank(valid_records())) == len(valid_records())
+
+
 @pytest.mark.parametrize(
     ("family", "request_type", "reference_field", "answer_field"),
     [
         ("numeric", NumericVerificationRequest, "expected", "candidate"),
         ("expression_equivalence", ExpressionEquivalenceRequest, "left", "right"),
         ("linear_equation", LinearEquationRequest, "equation", "candidate"),
+        ("factorization", FactorizationVerificationRequest, "reference", "candidate"),
+        ("domain_condition", DomainConditionVerificationRequest, "reference", "candidate"),
     ],
 )
 def test_question_verification_requests_use_internal_reference_and_answer(
@@ -101,6 +146,8 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.linear-equation.002",
         "g8alg.equivalent-transform.001",
         "g8alg.equivalent-transform.002",
+        "g8alg.factorization.001",
+        "g8alg.rational-expression-domain.001",
     ]
 
 
@@ -169,18 +216,66 @@ def test_invalid_question_record_is_rejected(mutation) -> None:
         _build_question_bank(records)
 
 
-def test_wrong_total_is_rejected() -> None:
-    with pytest.raises(ValueError, match="exactly 12"):
-        _build_question_bank(valid_records()[:-1])
+def test_empty_question_bank_is_rejected() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        _build_question_bank([])
 
 
-def test_wrong_family_distribution_is_rejected() -> None:
+def test_family_counts_are_not_fixed() -> None:
     records = valid_records()
-    records[0]["skill_code"] = "algebra.expression.simplify"
-    records[0]["verification_family"] = "expression_equivalence"
+    skill_counts = Counter(record["skill_code"] for record in records)
+    removable_index = next(
+        index
+        for index, record in enumerate(records)
+        if skill_counts[record["skill_code"]] > 1
+    )
+    removed_record = records.pop(removable_index)
 
-    with pytest.raises(ValueError, match="distribution"):
+    rebuilt = _build_question_bank(records)
+    original_family_counts = Counter(record["verification_family"] for record in valid_records())
+    rebuilt_family_counts = Counter(item.verification_family for item in rebuilt)
+    eligible_skills = {
+        skill.code
+        for skill in get_controlled_skills()
+        if is_mastery_bearing_skill(skill.code)
+        and skill.verifier_family
+        in {
+            "numeric",
+            "expression_equivalence",
+            "linear_equation",
+            "factorization",
+            "domain_condition",
+        }
+    }
+
+    assert len(records) != 12
+    assert len(rebuilt) == len(records)
+    assert rebuilt_family_counts[removed_record["verification_family"]] == (
+        original_family_counts[removed_record["verification_family"]] - 1
+    )
+    assert eligible_skills <= {item.skill_code for item in rebuilt}
+
+
+def test_missing_eligible_skill_coverage_is_rejected() -> None:
+    records = valid_records()
+    records = [
+        record
+        for record in records
+        if record["skill_code"] != "algebra.factorization"
+    ]
+
+    with pytest.raises(ValueError, match="deterministic transfer coverage"):
         _build_question_bank(records)
+
+
+def test_manual_or_future_skill_is_not_required_for_coverage() -> None:
+    records = valid_records()
+
+    assert all(
+        record["skill_code"] != "algebra.rational_expression.simplify"
+        for record in records
+    )
+    assert len(_build_question_bank(records)) == len(records)
 
 
 def test_self_invalid_verification_pair_is_rejected() -> None:

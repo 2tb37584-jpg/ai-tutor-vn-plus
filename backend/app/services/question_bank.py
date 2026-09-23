@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from app.services.skill_registry import get_controlled_skills, is_mastery_bearing_skill
 from app.services.verifier import (
+    DomainConditionVerificationRequest,
     ExpressionEquivalenceRequest,
+    FactorizationVerificationRequest,
     LinearEquationRequest,
     NumericVerificationRequest,
     ProblemFamily,
@@ -30,12 +31,16 @@ _REQUIRED_FIELDS = {
     "verification_family",
     "difficulty",
 }
-_SUPPORTED_FAMILIES = {
-    "numeric",
-    "expression_equivalence",
-    "linear_equation",
-}
-_EXPECTED_FAMILY_COUNTS = {family: 4 for family in _SUPPORTED_FAMILIES}
+_DETERMINISTIC_TRANSFER_FAMILIES = frozenset(
+    {
+        ProblemFamily.NUMERIC,
+        ProblemFamily.EXPRESSION_EQUIVALENCE,
+        ProblemFamily.LINEAR_EQUATION,
+        ProblemFamily.FACTORIZATION,
+        ProblemFamily.DOMAIN_CONDITION,
+    }
+)
+_SUPPORTED_FAMILIES = {family.value for family in _DETERMINISTIC_TRANSFER_FAMILIES}
 
 
 @dataclass(frozen=True)
@@ -63,6 +68,18 @@ def _verification_request(item: QuestionBankItem) -> VerificationRequest:
             left=item.verification_reference,
             right=item.expected_answer,
         )
+    if family is ProblemFamily.FACTORIZATION:
+        return FactorizationVerificationRequest(
+            family=family,
+            reference=item.verification_reference,
+            candidate=item.expected_answer,
+        )
+    if family is ProblemFamily.DOMAIN_CONDITION:
+        return DomainConditionVerificationRequest(
+            family=family,
+            reference=item.verification_reference,
+            candidate=item.expected_answer,
+        )
     return LinearEquationRequest(
         family=family,
         equation=item.verification_reference,
@@ -71,8 +88,8 @@ def _verification_request(item: QuestionBankItem) -> VerificationRequest:
 
 
 def _build_question_bank(records: Any) -> tuple[QuestionBankItem, ...]:
-    if not isinstance(records, list) or len(records) != 12:
-        raise ValueError("Question bank must contain exactly 12 records")
+    if not isinstance(records, list) or not records:
+        raise ValueError("Question bank must contain at least one record")
 
     definitions = {skill.code: skill for skill in get_controlled_skills()}
     items: list[QuestionBankItem] = []
@@ -112,8 +129,19 @@ def _build_question_bank(records: Any) -> tuple[QuestionBankItem, ...]:
             raise ValueError(f"Question verification pair is invalid: {question_id}")
         items.append(item)
 
-    if Counter(item.verification_family for item in items) != _EXPECTED_FAMILY_COUNTS:
-        raise ValueError("Question bank has invalid verification family distribution")
+    eligible_skill_codes = {
+        skill.code
+        for skill in definitions.values()
+        if is_mastery_bearing_skill(skill.code)
+        and skill.verifier_family in _SUPPORTED_FAMILIES
+    }
+    covered_skill_codes = {item.skill_code for item in items}
+    missing_skill_codes = eligible_skill_codes - covered_skill_codes
+    if missing_skill_codes:
+        raise ValueError(
+            "Question bank is missing deterministic transfer coverage: "
+            + ", ".join(sorted(missing_skill_codes))
+        )
     return tuple(items)
 
 
