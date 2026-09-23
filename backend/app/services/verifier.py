@@ -39,6 +39,7 @@ _PARSE_GLOBALS = {
 
 class ProblemFamily(str, Enum):
     EXPRESSION_EQUIVALENCE = "expression_equivalence"
+    FACTORIZATION = "factorization"
     LINEAR_EQUATION = "linear_equation"
     NUMERIC = "numeric"
 
@@ -63,6 +64,13 @@ class ExpressionEquivalenceRequest:
 
 
 @dataclass(frozen=True)
+class FactorizationVerificationRequest:
+    family: ProblemFamily
+    reference: str
+    candidate: str
+
+
+@dataclass(frozen=True)
 class LinearEquationRequest:
     family: ProblemFamily
     equation: str
@@ -78,7 +86,10 @@ class NumericVerificationRequest:
 
 
 VerificationRequest = (
-    ExpressionEquivalenceRequest | LinearEquationRequest | NumericVerificationRequest
+    ExpressionEquivalenceRequest
+    | FactorizationVerificationRequest
+    | LinearEquationRequest
+    | NumericVerificationRequest
 )
 
 
@@ -186,6 +197,68 @@ def _verify_expression_equivalence(
 
     try:
         difference = simplify(left_expression - right_expression)
+        if _is_non_finite(difference):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        status = (
+            VerificationStatus.CORRECT
+            if difference == 0
+            else VerificationStatus.INCORRECT
+        )
+        return VerificationResult(status)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+
+def _has_accepted_factored_structure(expression: Expr) -> bool:
+    supported_symbols = set(_SYMBOLS.values())
+    if isinstance(expression, Mul):
+        meaningful_factors = tuple(
+            factor
+            for factor in expression.args
+            if factor not in (Integer(1), Integer(-1))
+        )
+        variable_factors = tuple(
+            factor
+            for factor in meaningful_factors
+            if factor.free_symbols & supported_symbols
+        )
+        numeric_factors = tuple(
+            factor
+            for factor in meaningful_factors
+            if not factor.free_symbols and factor.is_number is True
+        )
+        if len(variable_factors) == 1 and numeric_factors:
+            numeric_product = simplify(Mul(*numeric_factors))
+            if (
+                simplify(numeric_product - 1) == 0
+                or simplify(numeric_product + 1) == 0
+            ):
+                return False
+        return len(meaningful_factors) >= 2 and bool(variable_factors)
+    if isinstance(expression, Pow):
+        return (
+            isinstance(expression.exp, Integer)
+            and expression.exp > 1
+            and bool(expression.base.free_symbols & supported_symbols)
+        )
+    return False
+
+
+def _verify_factorization(
+    request: FactorizationVerificationRequest,
+) -> VerificationResult:
+    try:
+        reference_expression = _parse_supported_expression(request.reference)
+        candidate_expression = _parse_supported_expression(request.candidate)
+    except _KNOWN_VALIDATION_ERRORS:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    try:
+        if not _has_accepted_factored_structure(candidate_expression):
+            return VerificationResult(VerificationStatus.INCORRECT)
+        difference = simplify(reference_expression - candidate_expression)
         if _is_non_finite(difference):
             return VerificationResult(VerificationStatus.UNSUPPORTED)
         status = (
@@ -365,6 +438,10 @@ def verify(request: VerificationRequest) -> VerificationResult:
         if not isinstance(request, ExpressionEquivalenceRequest):
             return VerificationResult(VerificationStatus.UNSUPPORTED)
         return _verify_expression_equivalence(request)
+    if request.family is ProblemFamily.FACTORIZATION:
+        if not isinstance(request, FactorizationVerificationRequest):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        return _verify_factorization(request)
     if request.family is ProblemFamily.LINEAR_EQUATION:
         if not isinstance(request, LinearEquationRequest):
             return VerificationResult(VerificationStatus.UNSUPPORTED)

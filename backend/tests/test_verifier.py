@@ -5,6 +5,7 @@ import pytest
 import app.services.verifier as verifier
 from app.services.verifier import (
     ExpressionEquivalenceRequest,
+    FactorizationVerificationRequest,
     LinearEquationRequest,
     LinearEquationStatus,
     NumericVerificationRequest,
@@ -164,6 +165,138 @@ def test_expression_verification_adapter_marks_parse_runtime_failure_indetermina
             ProblemFamily.EXPRESSION_EQUIVALENCE,
             "x+1",
             "x+1",
+        )
+    )
+
+    assert result.status is VerificationStatus.INDETERMINATE
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("x^2-1", "(x-1)*(x+1)"),
+        ("x^2+2*x+1", "(x+1)^2"),
+        ("2*x+6", "2*(x+3)"),
+    ],
+)
+def test_factorization_verification_accepts_equivalent_factored_forms(
+    reference: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            reference,
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.CORRECT
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("x^2-1", "x^2-1"),
+        ("x^2+2*x+1", "x^2+2*x+1"),
+        ("x^2-1", "(x-1)*(x-1)"),
+    ],
+)
+def test_factorization_verification_rejects_expanded_or_wrong_factors(
+    reference: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            reference,
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.INCORRECT
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("x^2-1", "1*(x^2-1)"),
+        ("x^2-1", "-1*(-x^2+1)"),
+        ("x^2-1", "2*(x^2-1)/2"),
+        ("x^2-1", "-2*(-x^2+1)/2"),
+        ("x^2-1", "2*(x^2-1)*0.5"),
+        ("x^2-1", "-2*(-x^2+1)*0.5"),
+        ("x^2+x+1", "x*(x+1)+1"),
+    ],
+)
+def test_factorization_verification_rejects_trivial_or_additive_wrappers(
+    reference: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            reference,
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.INCORRECT
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    ["__import__('os')", "1/x", "a*(x+1)"],
+)
+def test_factorization_verification_rejects_unsupported_input(candidate: str) -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            "x^2-1",
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_factorization_verification_rejects_unsupported_reference() -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            "1/x",
+            "(x-1)*(x+1)",
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_factorization_verification_rejects_mismatched_family() -> None:
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.NUMERIC,
+            "x^2-1",
+            "(x-1)*(x+1)",
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_factorization_verification_marks_internal_failure_indeterminate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected simplification failure")
+
+    monkeypatch.setattr(verifier, "simplify", raise_runtime_error)
+
+    result = verify(
+        FactorizationVerificationRequest(
+            ProblemFamily.FACTORIZATION,
+            "x^2-1",
+            "(x-1)*(x+1)",
         )
     )
 
