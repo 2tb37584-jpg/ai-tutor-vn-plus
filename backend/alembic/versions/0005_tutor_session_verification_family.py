@@ -1,6 +1,6 @@
 """Add trusted verifier-family routing metadata to tutor sessions.
 
-Revision ID: 0005_tutor_session_verification_family
+Revision ID: 0005_tutor_verifier_family
 Revises: 0004_tutor_message_reply_latency
 Create Date: 2026-09-22
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0005_tutor_session_verification_family"
+revision: str = "0005_tutor_verifier_family"
 down_revision: Union[str, Sequence[str], None] = "0004_tutor_message_reply_latency"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
