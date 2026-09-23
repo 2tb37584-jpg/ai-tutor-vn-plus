@@ -24,7 +24,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M05-04B3B | Tutor Engine | Enforce runtime answer-leakage guard in tutor API | DONE | Yes, small |
 | M05-05 | Tutor Engine | Record student reply latency | DONE | Yes |
 | M05-06 | Tutor Engine | Add deterministic tutor session summary | DONE | Yes |
-| M05-07 | Tutor Engine | Add explicit transfer completion runtime path | READY | Yes, small |
+| M05-07 | Tutor Engine | Add explicit transfer completion runtime path | ACTIVE | Yes, small |
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | DONE | Mostly ChatGPT |
 | M07-02 | Skill Graph | Implement controlled skill registry | DONE | Yes |
 | M07-03 | Skill Graph | Expose curriculum prerequisite graph queries | DONE | Yes |
