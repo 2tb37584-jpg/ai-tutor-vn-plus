@@ -11,7 +11,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M00-05 | Baseline | Switch runtime schema workflow to Alembic | DONE | Yes, small |
 | M00-06 | Baseline | Developer workflow automation | DONE | Yes |
 | M00-07 | Baseline | Task lifecycle automation | DONE | Yes |
-| M00-08 | Baseline | Fix Alembic revision-ID startup blocker | ACTIVE | Yes, small |
+| M00-08 | Baseline | Fix Alembic revision-ID startup blocker | DONE | Yes, small |
 | M05-01 | Tutor Engine | Define deterministic tutor state model | DONE | Yes, small |
 | M05-02 | Tutor Engine | Implement state transition rules | DONE | Yes |
 | M05-02A1 | Tutor Engine | Add persisted tutor session state | DONE | Yes, small |
