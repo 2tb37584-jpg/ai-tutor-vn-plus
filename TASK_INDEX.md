@@ -46,6 +46,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M06-12 | Verifier | Record deterministic tutor reply mastery evidence | DONE | Yes |
 | M06-13 | Verifier | Add safe verification decision telemetry | DONE | Yes |
 | M06-14 | Verifier | Define transfer verification eligibility contract | DONE | Mostly ChatGPT |
+| M06-15 | Verifier | Add deterministic factorization verifier | READY | Yes |
 | M08-01 | Mastery | Define mastery event contract | DONE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |
