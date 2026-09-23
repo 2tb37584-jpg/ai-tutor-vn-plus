@@ -25,6 +25,7 @@ from sympy.polys.polyerrors import PolynomialError
 
 _ALLOWED = re.compile(r"^[0-9xyzXYZ+\-*/^().=\s]+$")
 _NUMERIC_LITERAL = re.compile(r"^[+-]?(?:\d+|\d+\.\d+|\d+/\d+)$")
+_DOMAIN_EXACT_LITERAL = re.compile(r"^[+-]?(?:\d+|\d+/\d+)$")
 _TRANSFORMS = standard_transformations + (convert_xor,)
 _SYMBOLS = {name: Symbol(name) for name in ("x", "y", "z")}
 _PARSE_GLOBALS = {
@@ -38,6 +39,7 @@ _PARSE_GLOBALS = {
 
 
 class ProblemFamily(str, Enum):
+    DOMAIN_CONDITION = "domain_condition"
     EXPRESSION_EQUIVALENCE = "expression_equivalence"
     FACTORIZATION = "factorization"
     LINEAR_EQUATION = "linear_equation"
@@ -71,6 +73,14 @@ class FactorizationVerificationRequest:
 
 
 @dataclass(frozen=True)
+class DomainConditionVerificationRequest:
+    family: ProblemFamily
+    reference: str
+    candidate: str
+    variable: str = "x"
+
+
+@dataclass(frozen=True)
 class LinearEquationRequest:
     family: ProblemFamily
     equation: str
@@ -86,7 +96,8 @@ class NumericVerificationRequest:
 
 
 VerificationRequest = (
-    ExpressionEquivalenceRequest
+    DomainConditionVerificationRequest
+    | ExpressionEquivalenceRequest
     | FactorizationVerificationRequest
     | LinearEquationRequest
     | NumericVerificationRequest
@@ -271,6 +282,72 @@ def _verify_factorization(
         return VerificationResult(VerificationStatus.INDETERMINATE)
 
 
+def _parse_domain_exact_literal(text: str) -> Fraction:
+    if not isinstance(text, str):
+        raise _UnsupportedVerificationInput
+    literal = text.strip()
+    if not _DOMAIN_EXACT_LITERAL.fullmatch(literal):
+        raise _UnsupportedVerificationInput
+    try:
+        return Fraction(literal)
+    except (ValueError, ZeroDivisionError) as error:
+        raise _UnsupportedVerificationInput from error
+
+
+def _parse_domain_condition_reference(reference: str) -> set[Fraction]:
+    if not isinstance(reference, str) or not reference.strip():
+        raise _UnsupportedVerificationInput
+    values = reference.split(",")
+    if any(not value.strip() for value in values):
+        raise _UnsupportedVerificationInput
+    return {_parse_domain_exact_literal(value) for value in values}
+
+
+def _parse_domain_condition_candidate(
+    candidate: str,
+    variable: str,
+) -> set[Fraction]:
+    if not isinstance(variable, str) or variable not in _SYMBOLS:
+        raise _UnsupportedVerificationInput
+    if not isinstance(candidate, str) or not candidate.strip():
+        raise _UnsupportedVerificationInput
+
+    clauses = re.split(r"[,;]", candidate)
+    if any(not clause.strip() for clause in clauses):
+        raise _UnsupportedVerificationInput
+    clause_pattern = re.compile(
+        rf"^{re.escape(variable)}\s*(?:!=|≠)\s*(.+)$"
+    )
+    values: set[Fraction] = set()
+    for clause in clauses:
+        match = clause_pattern.fullmatch(clause.strip())
+        if match is None:
+            raise _UnsupportedVerificationInput
+        values.add(_parse_domain_exact_literal(match.group(1)))
+    return values
+
+
+def _verify_domain_condition(
+    request: DomainConditionVerificationRequest,
+) -> VerificationResult:
+    try:
+        reference_values = _parse_domain_condition_reference(request.reference)
+        candidate_values = _parse_domain_condition_candidate(
+            request.candidate,
+            request.variable,
+        )
+    except _UnsupportedVerificationInput:
+        return VerificationResult(VerificationStatus.UNSUPPORTED)
+    except Exception:
+        return VerificationResult(VerificationStatus.INDETERMINATE)
+
+    return VerificationResult(
+        VerificationStatus.CORRECT
+        if reference_values == candidate_values
+        else VerificationStatus.INCORRECT
+    )
+
+
 def equivalent(left: str, right: str) -> bool:
     """Compare finite polynomial school-algebra expressions deterministically."""
     try:
@@ -434,6 +511,10 @@ def _verify_numeric(request: NumericVerificationRequest) -> VerificationResult:
 
 def verify(request: VerificationRequest) -> VerificationResult:
     """Route an explicitly classified deterministic verification request."""
+    if request.family is ProblemFamily.DOMAIN_CONDITION:
+        if not isinstance(request, DomainConditionVerificationRequest):
+            return VerificationResult(VerificationStatus.UNSUPPORTED)
+        return _verify_domain_condition(request)
     if request.family is ProblemFamily.EXPRESSION_EQUIVALENCE:
         if not isinstance(request, ExpressionEquivalenceRequest):
             return VerificationResult(VerificationStatus.UNSUPPORTED)

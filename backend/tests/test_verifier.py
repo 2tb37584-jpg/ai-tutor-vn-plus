@@ -4,6 +4,7 @@ import pytest
 
 import app.services.verifier as verifier
 from app.services.verifier import (
+    DomainConditionVerificationRequest,
     ExpressionEquivalenceRequest,
     FactorizationVerificationRequest,
     LinearEquationRequest,
@@ -297,6 +298,140 @@ def test_factorization_verification_marks_internal_failure_indeterminate(
             ProblemFamily.FACTORIZATION,
             "x^2-1",
             "(x-1)*(x+1)",
+        )
+    )
+
+    assert result.status is VerificationStatus.INDETERMINATE
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("-3,2", "x != -3, x != 2"),
+        ("-3,2", "x ≠ 2; x ≠ -3"),
+        ("1/2", "x != 2/4"),
+        ("-3,2", "x != -3, x != 2, x != 2"),
+        ("-3,2,2,-3", "x != -3, x != 2"),
+    ],
+)
+def test_domain_condition_verification_accepts_equal_excluded_sets(
+    reference: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            reference,
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.CORRECT
+
+
+def test_domain_condition_verification_supports_non_default_variable() -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            "1/2",
+            "y != 2/4",
+            variable="y",
+        )
+    )
+
+    assert result.status is VerificationStatus.CORRECT
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        "x != -3",
+        "x != -3, x != 2, x != 5",
+        "x != 3, x != 2",
+    ],
+)
+def test_domain_condition_verification_rejects_different_excluded_sets(
+    candidate: str,
+) -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            "-3,2",
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.INCORRECT
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ("", "x != 2"),
+        ("-3,,2", "x != -3, x != 2"),
+        ("-3,2", ""),
+        ("-3,2", "x != 2.0"),
+        ("-3,2", "x > 2"),
+        ("-3,2", "{x | x != 2}"),
+        ("-3,2", "y != 2"),
+        ("-3,2", "w != 2"),
+        ("-3,2", "x != a"),
+        ("-3,2", "x != __import__('os')"),
+    ],
+)
+def test_domain_condition_verification_rejects_unsupported_input(
+    reference: str,
+    candidate: str,
+) -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            reference,
+            candidate,
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_domain_condition_verification_rejects_unsupported_request_variable() -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            "2",
+            "w != 2",
+            variable="w",
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_domain_condition_verification_rejects_mismatched_family() -> None:
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.NUMERIC,
+            "2",
+            "x != 2",
+        )
+    )
+
+    assert result.status is VerificationStatus.UNSUPPORTED
+
+
+def test_domain_condition_verification_reports_unexpected_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_runtime_error(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("unexpected domain parser failure")
+
+    monkeypatch.setattr(verifier, "_parse_domain_condition_reference", raise_runtime_error)
+
+    result = verify(
+        DomainConditionVerificationRequest(
+            ProblemFamily.DOMAIN_CONDITION,
+            "2",
+            "x != 2",
         )
     )
 
