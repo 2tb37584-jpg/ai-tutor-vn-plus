@@ -4,6 +4,7 @@ from app.api import tutor as tutor_api
 from app.models import Student, TutorMessage, TutorSession, User
 from app.schemas.tutor import ProblemAnalysis, StartTutorRequest, StartTutorResponse, TutorState, TutorTurn
 from app.services.skill_registry import SkillDefinition
+from app.services.verifier import ProblemFamily
 
 
 class FakeDatabase:
@@ -105,3 +106,26 @@ def test_start_persists_only_registry_backed_implemented_verifier_families(
     assert db.session.verification_family == expected_family
     assert "verification_family" not in serialized
     assert "verification_family" not in serialized["analysis"]
+
+
+def test_registered_family_requires_explicit_tutor_runtime_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tutor_api,
+        "_TUTOR_RUNTIME_VERIFICATION_FAMILIES",
+        {
+            ProblemFamily.EXPRESSION_EQUIVALENCE,
+            ProblemFamily.LINEAR_EQUATION,
+        },
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "get_controlled_skills",
+        lambda: (controlled_skill("skill.numeric", "numeric"),),
+    )
+
+    assert (
+        tutor_api._verification_family_for_primary_skill("skill.numeric")
+        is None
+    )

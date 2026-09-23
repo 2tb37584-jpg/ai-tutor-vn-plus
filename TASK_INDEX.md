@@ -47,7 +47,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M06-13 | Verifier | Add safe verification decision telemetry | DONE | Yes |
 | M06-14 | Verifier | Define transfer verification eligibility contract | DONE | Mostly ChatGPT |
 | M06-15 | Verifier | Add deterministic factorization verifier | BLOCKED | Yes |
-| M06-16 | Verifier | Separate registered verifier families from tutor runtime-supported families | ACTIVE | Yes |
+| M06-16 | Verifier | Separate registered verifier families from tutor runtime-supported families | DONE | Yes |
 | M08-01 | Mastery | Define mastery event contract | DONE | Mostly ChatGPT |
 | M08-02 | Mastery | Implement v1 mastery update | DONE | Yes |
 | M08-03 | Mastery | Add misconception evidence model | DONE | Yes |

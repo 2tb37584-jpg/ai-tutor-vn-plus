@@ -52,6 +52,11 @@ router = APIRouter(prefix="/tutor", tags=["tutor"])
 ai = TutorAI()
 logger = logging.getLogger(__name__)
 _SAFE_TUTOR_FALLBACK = "Em hãy tiếp tục từ bước em đang làm và giải thích vì sao bước đó hợp lý. Thầy/cô sẽ giúp em kiểm tra."
+_TUTOR_RUNTIME_VERIFICATION_FAMILIES = {
+    ProblemFamily.NUMERIC,
+    ProblemFamily.EXPRESSION_EQUIVALENCE,
+    ProblemFamily.LINEAR_EQUATION,
+}
 
 
 def _utcnow() -> datetime:
@@ -71,9 +76,12 @@ def _verification_family_for_primary_skill(primary_skill: str) -> str | None:
         if skill.code != primary_skill:
             continue
         try:
-            return ProblemFamily(skill.verifier_family).value
+            family = ProblemFamily(skill.verifier_family)
         except ValueError:
             return None
+        if family not in _TUTOR_RUNTIME_VERIFICATION_FAMILIES:
+            return None
+        return family.value
     return None
 
 
