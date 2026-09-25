@@ -30,6 +30,7 @@ from app.services.mastery import (
     VerificationStatus as MasteryVerificationStatus,
     record_mastery_evidence,
 )
+from app.services.question_bank import get_question, verification_request_for_candidate
 from app.services.session_summary import InvalidTutorSessionState, summarize_tutor_session
 from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_ai import TutorAI
@@ -113,6 +114,26 @@ def _verification_request_for_session(
             candidate=candidate,
         )
     return None
+
+
+def _transfer_verification_request_for_session(
+    session: TutorSession,
+    candidate: str,
+) -> VerificationRequest | None:
+    transfer_question_id = session.transfer_question_id
+    if transfer_question_id is None:
+        return None
+
+    item = get_question(transfer_question_id)
+    if item is None:
+        return None
+    if session.primary_skill and item.skill_code != session.primary_skill:
+        return None
+
+    try:
+        return verification_request_for_candidate(item, candidate)
+    except ValueError:
+        return None
 
 
 def _authoritative_state_for_correctness(

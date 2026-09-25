@@ -54,37 +54,46 @@ class QuestionBankItem:
     difficulty: int
 
 
-def _verification_request(item: QuestionBankItem) -> VerificationRequest:
+def verification_request_for_candidate(
+    item: QuestionBankItem,
+    candidate: str,
+) -> VerificationRequest:
     family = ProblemFamily(item.verification_family)
     if family is ProblemFamily.NUMERIC:
         return NumericVerificationRequest(
             family=family,
             expected=item.verification_reference,
-            candidate=item.expected_answer,
+            candidate=candidate,
         )
     if family is ProblemFamily.EXPRESSION_EQUIVALENCE:
         return ExpressionEquivalenceRequest(
             family=family,
             left=item.verification_reference,
-            right=item.expected_answer,
+            right=candidate,
         )
     if family is ProblemFamily.FACTORIZATION:
         return FactorizationVerificationRequest(
             family=family,
             reference=item.verification_reference,
-            candidate=item.expected_answer,
+            candidate=candidate,
         )
     if family is ProblemFamily.DOMAIN_CONDITION:
         return DomainConditionVerificationRequest(
             family=family,
             reference=item.verification_reference,
-            candidate=item.expected_answer,
+            candidate=candidate,
         )
-    return LinearEquationRequest(
-        family=family,
-        equation=item.verification_reference,
-        candidate=item.expected_answer,
-    )
+    if family is ProblemFamily.LINEAR_EQUATION:
+        return LinearEquationRequest(
+            family=family,
+            equation=item.verification_reference,
+            candidate=candidate,
+        )
+    raise ValueError(f"Unsupported question-bank verification family: {item.verification_family}")
+
+
+def _verification_request(item: QuestionBankItem) -> VerificationRequest:
+    return verification_request_for_candidate(item, item.expected_answer)
 
 
 def _build_question_bank(records: Any) -> tuple[QuestionBankItem, ...]:

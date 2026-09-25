@@ -3,8 +3,18 @@ import pytest
 from app.api import tutor as tutor_api
 from app.models import Student, TutorMessage, TutorSession, User
 from app.schemas.tutor import ProblemAnalysis, StartTutorRequest, StartTutorResponse, TutorState, TutorTurn
+from app.services.question_bank import QuestionBankItem, get_question
 from app.services.skill_registry import SkillDefinition
-from app.services.verifier import ProblemFamily
+from app.services.verifier import (
+    DomainConditionVerificationRequest,
+    ExpressionEquivalenceRequest,
+    FactorizationVerificationRequest,
+    LinearEquationRequest,
+    NumericVerificationRequest,
+    ProblemFamily,
+    VerificationStatus,
+    verify,
+)
 
 
 class FakeDatabase:
@@ -129,3 +139,152 @@ def test_registered_family_requires_explicit_tutor_runtime_support(
         tutor_api._verification_family_for_primary_skill("skill.numeric")
         is None
     )
+
+
+def transfer_session(question_id: str, primary_skill: str) -> TutorSession:
+    return TutorSession(
+        student_id=1,
+        primary_skill=primary_skill,
+        transfer_question_id=question_id,
+        normalized_problem="original session problem",
+        internal_expected_answer="original session answer",
+        verification_family="manual_or_future",
+    )
+
+
+def test_transfer_verification_requires_persisted_question_id() -> None:
+    session = transfer_session(
+        "g8alg.factorization.001",
+        "algebra.factorization",
+    )
+    session.transfer_question_id = None
+
+    assert tutor_api._transfer_verification_request_for_session(session, "(x-3)*(x+3)") is None
+
+
+def test_transfer_verification_does_not_fallback_for_unknown_id() -> None:
+    session = transfer_session(
+        "g8alg.does-not-exist.999",
+        "algebra.factorization",
+    )
+
+    assert tutor_api._transfer_verification_request_for_session(session, "(x-3)*(x+3)") is None
+
+
+def test_transfer_verification_rejects_authored_skill_mismatch() -> None:
+    session = transfer_session(
+        "g8alg.factorization.001",
+        "arithmetic.signed_number_operations",
+    )
+
+    assert tutor_api._transfer_verification_request_for_session(session, "(x-3)*(x+3)") is None
+
+
+@pytest.mark.parametrize(
+    ("question_id", "request_type", "trusted_field", "candidate_field", "candidate"),
+    [
+        (
+            "g8alg.signed-number-operations.001",
+            NumericVerificationRequest,
+            "expected",
+            "candidate",
+            "5",
+        ),
+        (
+            "g8alg.distributive-property.001",
+            ExpressionEquivalenceRequest,
+            "left",
+            "right",
+            "3*x-6",
+        ),
+        (
+            "g8alg.linear-equation.001",
+            LinearEquationRequest,
+            "equation",
+            "candidate",
+            "7",
+        ),
+        (
+            "g8alg.factorization.001",
+            FactorizationVerificationRequest,
+            "reference",
+            "candidate",
+            "(x-3)*(x+3)",
+        ),
+        (
+            "g8alg.rational-expression-domain.001",
+            DomainConditionVerificationRequest,
+            "reference",
+            "candidate",
+            "x != 2",
+        ),
+    ],
+)
+def test_transfer_verification_uses_authored_reference_and_learner_candidate(
+    question_id: str,
+    request_type: type[object],
+    trusted_field: str,
+    candidate_field: str,
+    candidate: str,
+) -> None:
+    item = get_question(question_id)
+    assert item is not None
+    session = transfer_session(question_id, item.skill_code)
+
+    request = tutor_api._transfer_verification_request_for_session(session, candidate)
+
+    assert isinstance(request, request_type)
+    assert getattr(request, trusted_field) == item.verification_reference
+    assert getattr(request, candidate_field) == candidate
+    assert verify(request).status is VerificationStatus.CORRECT
+
+
+def test_transfer_verification_ignores_original_session_verification_fields() -> None:
+    item = get_question("g8alg.linear-equation.001")
+    assert item is not None
+    session = transfer_session(item.id, item.skill_code)
+
+    request = tutor_api._transfer_verification_request_for_session(session, "7")
+
+    assert isinstance(request, LinearEquationRequest)
+    assert request.equation == item.verification_reference
+    assert request.equation != session.normalized_problem
+    assert request.candidate == "7"
+
+
+def test_transfer_verification_does_not_support_manual_or_future(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = QuestionBankItem(
+        id="manual.item.001",
+        skill_code="algebra.factorization",
+        problem_text="manual",
+        verification_reference="reference",
+        expected_answer="answer",
+        verification_family="manual_or_future",
+        difficulty=1,
+    )
+    monkeypatch.setattr(tutor_api, "get_question", lambda question_id: item)
+    session = transfer_session(item.id, item.skill_code)
+
+    assert tutor_api._transfer_verification_request_for_session(session, "candidate") is None
+
+
+def test_transfer_verification_propagates_unexpected_builder_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = get_question("g8alg.factorization.001")
+    assert item is not None
+    session = transfer_session(item.id, item.skill_code)
+
+    def raise_unexpected_error(item: QuestionBankItem, candidate: str) -> object:
+        raise TypeError("unexpected builder failure")
+
+    monkeypatch.setattr(
+        tutor_api,
+        "verification_request_for_candidate",
+        raise_unexpected_error,
+    )
+
+    with pytest.raises(TypeError, match="unexpected builder failure"):
+        tutor_api._transfer_verification_request_for_session(session, "candidate")
