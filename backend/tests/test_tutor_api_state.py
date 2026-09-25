@@ -1,4 +1,5 @@
 import pytest
+import app.services.question_recommender as recommender
 from fastapi import HTTPException
 
 from app.api import tutor as tutor_api
@@ -10,6 +11,9 @@ from app.schemas.tutor import (
     TutorState,
     TutorTurn,
 )
+import app.services.question_bank as question_bank
+from app.services.question_bank import get_transfer_question_for_skill
+from app.services.verifier import VerificationResult, VerificationStatus
 
 
 class FakeDatabase:
@@ -143,3 +147,150 @@ def test_invalid_persisted_state_fails_without_calling_tutor_ai(monkeypatch: pyt
 
     assert error.value.status_code == 500
     assert fake_ai.continue_calls == 0
+
+
+def test_entering_transfer_selects_and_reuses_exact_factorization_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, student, db = tutor_context()
+    session = TutorSession(
+        id=1,
+        student_id=student.id,
+        primary_skill="algebra.factorization",
+        current_state=TutorState.VERIFY.value,
+        internal_expected_answer="1",
+        verification_family="numeric",
+    )
+    db.sessions[session.id] = session
+    fake_ai = FakeTutorAI([TutorState.TRANSFER, TutorState.TRANSFER])
+    monkeypatch.setattr(tutor_api, "ai", fake_ai)
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(
+        recommender,
+        "recommend_next_question",
+        lambda *args, **kwargs: pytest.fail(
+            "transfer entry must not invoke the next-best-question recommender"
+        ),
+    )
+    selected_skills: list[str] = []
+
+    def select_once(skill_code: str):
+        selected_skills.append(skill_code)
+        return get_transfer_question_for_skill(skill_code)
+
+    monkeypatch.setattr(tutor_api, "get_transfer_question_for_skill", select_once)
+
+    tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="first"),
+        user,
+        db,
+    )
+
+    assert session.current_state == TutorState.TRANSFER.value
+    assert session.transfer_question_id == "g8alg.factorization.001"
+    assert selected_skills == ["algebra.factorization"]
+
+    tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="later"),
+        user,
+        db,
+    )
+
+    assert session.current_state == TutorState.TRANSFER.value
+    assert session.transfer_question_id == "g8alg.factorization.001"
+    assert selected_skills == ["algebra.factorization"]
+
+
+@pytest.mark.parametrize(
+    ("skill_code", "expected_id"),
+    [
+        ("algebra.rational_expression.domain", "g8alg.rational-expression-domain.001"),
+        ("arithmetic.signed_number_operations", "g8alg.signed-number-operations.001"),
+    ],
+)
+def test_transfer_question_selection_is_exact_and_declaration_ordered(
+    skill_code: str,
+    expected_id: str,
+) -> None:
+    item = get_transfer_question_for_skill(skill_code)
+
+    assert item is not None
+    assert item.id == expected_id
+    assert item.skill_code == skill_code
+
+
+def test_transfer_question_selection_excludes_non_mastery_supported_family(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    non_mastery_item = question_bank.QuestionBankItem(
+        id="g8alg.non-mastery-numeric.001",
+        skill_code="general.non_mastery_numeric",
+        problem_text="non-mastery item",
+        verification_reference="1",
+        expected_answer="1",
+        verification_family="numeric",
+        difficulty=1,
+    )
+    monkeypatch.setattr(question_bank, "_QUESTION_BANK", (non_mastery_item,))
+
+    assert get_transfer_question_for_skill("general.non_mastery_numeric") is None
+
+
+@pytest.mark.parametrize(
+    "skill_code",
+    [None, "algebra.rational_expression.simplify", "algebra.factorization.neighbor"],
+)
+def test_transfer_question_selection_has_no_missing_or_related_skill_fallback(
+    skill_code: str | None,
+) -> None:
+    session = TutorSession(
+        student_id=1,
+        primary_skill=skill_code,
+        current_state=TutorState.VERIFY.value,
+    )
+
+    tutor_api._persist_transfer_question_id_on_entry(
+        session,
+        TutorState.VERIFY,
+        TutorState.TRANSFER,
+    )
+
+    assert session.transfer_question_id is None
+
+
+def test_transfer_question_selection_preserves_existing_id() -> None:
+    session = TutorSession(
+        student_id=1,
+        primary_skill="algebra.factorization",
+        transfer_question_id="g8alg.factorization.001",
+        current_state=TutorState.VERIFY.value,
+    )
+
+    tutor_api._persist_transfer_question_id_on_entry(
+        session,
+        TutorState.VERIFY,
+        TutorState.TRANSFER,
+    )
+
+    assert session.transfer_question_id == "g8alg.factorization.001"
+
+
+def test_transfer_entry_does_not_complete_or_update_mastery() -> None:
+    session = TutorSession(
+        student_id=1,
+        primary_skill="algebra.factorization",
+        current_state=TutorState.VERIFY.value,
+    )
+
+    tutor_api._persist_transfer_question_id_on_entry(
+        session,
+        TutorState.VERIFY,
+        TutorState.TRANSFER,
+    )
+
+    assert session.current_state == TutorState.VERIFY.value
+    assert session.transfer_question_id == "g8alg.factorization.001"

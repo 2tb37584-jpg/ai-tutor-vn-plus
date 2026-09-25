@@ -30,7 +30,11 @@ from app.services.mastery import (
     VerificationStatus as MasteryVerificationStatus,
     record_mastery_evidence,
 )
-from app.services.question_bank import get_question, verification_request_for_candidate
+from app.services.question_bank import (
+    get_question,
+    get_transfer_question_for_skill,
+    verification_request_for_candidate,
+)
 from app.services.session_summary import InvalidTutorSessionState, summarize_tutor_session
 from app.services.skill_registry import get_controlled_skills
 from app.services.tutor_ai import TutorAI
@@ -134,6 +138,21 @@ def _transfer_verification_request_for_session(
         return verification_request_for_candidate(item, candidate)
     except ValueError:
         return None
+
+
+def _persist_transfer_question_id_on_entry(
+    session: TutorSession,
+    previous_state: TutorState,
+    next_state: TutorState,
+) -> None:
+    if previous_state is TutorState.TRANSFER or next_state is not TutorState.TRANSFER:
+        return
+    if session.transfer_question_id is not None or not session.primary_skill:
+        return
+
+    item = get_transfer_question_for_skill(session.primary_skill)
+    if item is not None:
+        session.transfer_question_id = item.id
 
 
 def _authoritative_state_for_correctness(
@@ -361,6 +380,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                     ),
                 )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
+    _persist_transfer_question_id_on_entry(session, current_state, tutor_turn.state)
     session.current_state = tutor_turn.state.value
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()

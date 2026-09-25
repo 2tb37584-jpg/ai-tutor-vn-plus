@@ -168,3 +168,15 @@ def get_question(question_id: str) -> QuestionBankItem | None:
 
 def get_questions_for_skill(skill_code: str) -> tuple[QuestionBankItem, ...]:
     return tuple(item for item in _QUESTION_BANK if item.skill_code == skill_code)
+
+
+def get_transfer_question_for_skill(skill_code: str) -> QuestionBankItem | None:
+    return next(
+        (
+            item
+            for item in get_questions_for_skill(skill_code)
+            if is_mastery_bearing_skill(item.skill_code)
+            and item.verification_family in _SUPPORTED_FAMILIES
+        ),
+        None,
+    )
