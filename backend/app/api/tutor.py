@@ -50,6 +50,7 @@ from app.services.verifier import (
     NumericVerificationRequest,
     ProblemFamily,
     VerificationRequest,
+    VerificationStatus,
     verify,
 )
 
@@ -303,82 +304,100 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     else:
         tutor_turn = ai.continue_turn(**turn_arguments)
 
-        verification_request = _verification_request_for_session(
-            session,
-            payload.student_message,
-        )
-        if verification_request is not None:
-            verification_result = verify(verification_request)
-            retry_count = 0
-            decision = resolve_verification_decision(
-                verification_result.status,
-                tutor_turn.likely_correct,
+        if current_state is TutorState.TRANSFER:
+            verification_request = _transfer_verification_request_for_session(
+                session,
+                payload.student_message,
             )
-            if decision.action is EscalationAction.RETRY_DETERMINISTIC:
-                retry_count = 1
+            next_state = TutorState.TRANSFER
+            if (
+                verification_request is not None
+                and verify(verification_request).status is VerificationStatus.CORRECT
+            ):
+                next_state = transition_tutor_state(
+                    TutorTransitionInput(
+                        state=current_state,
+                        event=TutorTransitionEvent.TRANSFER_COMPLETED,
+                    )
+                )
+            tutor_turn = _turn_with_authoritative_state(tutor_turn, next_state)
+        else:
+            verification_request = _verification_request_for_session(
+                session,
+                payload.student_message,
+            )
+            if verification_request is not None:
                 verification_result = verify(verification_request)
+                retry_count = 0
                 decision = resolve_verification_decision(
                     verification_result.status,
                     tutor_turn.likely_correct,
-                    retry_count=1,
                 )
-            tutor_turn = _turn_with_authoritative_state(
-                tutor_turn,
-                _authoritative_state_for_correctness(
-                    current_state,
-                    decision.correctness,
-                ),
-            )
-            mastery_eligible = (
-                current_state
-                in {
-                    TutorState.ASK_ATTEMPT,
-                    TutorState.HINT_1,
-                    TutorState.HINT_2,
-                }
-                and decision.correctness
-                in {EffectiveCorrectness.CORRECT, EffectiveCorrectness.INCORRECT}
-            )
-            logger.info(
-                "event=tutor_verification_decision session_id=%s skill_code=%s "
-                "problem_family=%s verifier_status=%s model_likely_correct=%s "
-                "disagreement=%s retry_count=%s escalation_outcome=%s "
-                "mastery_eligible=%s verification_method=%s",
-                session.id,
-                session.primary_skill,
-                verification_request.family.value,
-                verification_result.status.value,
-                str(tutor_turn.likely_correct).lower(),
-                str(decision.disagreement).lower(),
-                retry_count,
-                decision.action.value,
-                str(mastery_eligible).lower(),
-                session.verification_family,
-            )
-            if mastery_eligible:
-                record_mastery_evidence(
-                    db,
-                    MasteryEvidenceEvent(
-                        student_id=session.student_id,
-                        session_id=session.id,
-                        skill_code=session.primary_skill,
-                        outcome=(
-                            MasteryOutcome.CORRECT
-                            if decision.correctness is EffectiveCorrectness.CORRECT
-                            else MasteryOutcome.INCORRECT
-                        ),
-                        evidence_type=MasteryEvidenceType.DETERMINISTIC_VERIFICATION,
-                        verification_status=MasteryVerificationStatus.VERIFIED,
-                        verification_method=session.verification_family,
-                        confidence=1.0,
-                        hint_count={
-                            TutorState.ASK_ATTEMPT: 0,
-                            TutorState.HINT_1: 1,
-                            TutorState.HINT_2: 2,
-                        }[current_state],
-                        is_transfer=False,
+                if decision.action is EscalationAction.RETRY_DETERMINISTIC:
+                    retry_count = 1
+                    verification_result = verify(verification_request)
+                    decision = resolve_verification_decision(
+                        verification_result.status,
+                        tutor_turn.likely_correct,
+                        retry_count=1,
+                    )
+                tutor_turn = _turn_with_authoritative_state(
+                    tutor_turn,
+                    _authoritative_state_for_correctness(
+                        current_state,
+                        decision.correctness,
                     ),
                 )
+                mastery_eligible = (
+                    current_state
+                    in {
+                        TutorState.ASK_ATTEMPT,
+                        TutorState.HINT_1,
+                        TutorState.HINT_2,
+                    }
+                    and decision.correctness
+                    in {EffectiveCorrectness.CORRECT, EffectiveCorrectness.INCORRECT}
+                )
+                logger.info(
+                    "event=tutor_verification_decision session_id=%s skill_code=%s "
+                    "problem_family=%s verifier_status=%s model_likely_correct=%s "
+                    "disagreement=%s retry_count=%s escalation_outcome=%s "
+                    "mastery_eligible=%s verification_method=%s",
+                    session.id,
+                    session.primary_skill,
+                    verification_request.family.value,
+                    verification_result.status.value,
+                    str(tutor_turn.likely_correct).lower(),
+                    str(decision.disagreement).lower(),
+                    retry_count,
+                    decision.action.value,
+                    str(mastery_eligible).lower(),
+                    session.verification_family,
+                )
+                if mastery_eligible:
+                    record_mastery_evidence(
+                        db,
+                        MasteryEvidenceEvent(
+                            student_id=session.student_id,
+                            session_id=session.id,
+                            skill_code=session.primary_skill,
+                            outcome=(
+                                MasteryOutcome.CORRECT
+                                if decision.correctness is EffectiveCorrectness.CORRECT
+                                else MasteryOutcome.INCORRECT
+                            ),
+                            evidence_type=MasteryEvidenceType.DETERMINISTIC_VERIFICATION,
+                            verification_status=MasteryVerificationStatus.VERIFIED,
+                            verification_method=session.verification_family,
+                            confidence=1.0,
+                            hint_count={
+                                TutorState.ASK_ATTEMPT: 0,
+                                TutorState.HINT_1: 1,
+                                TutorState.HINT_2: 2,
+                            }[current_state],
+                            is_transfer=False,
+                        ),
+                    )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     _persist_transfer_question_id_on_entry(session, current_state, tutor_turn.state)
     session.current_state = tutor_turn.state.value

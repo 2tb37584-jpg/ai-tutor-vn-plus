@@ -13,7 +13,11 @@ from app.schemas.tutor import (
 )
 import app.services.question_bank as question_bank
 from app.services.question_bank import get_transfer_question_for_skill
-from app.services.verifier import VerificationResult, VerificationStatus
+from app.services.verifier import (
+    FactorizationVerificationRequest,
+    VerificationResult,
+    VerificationStatus,
+)
 
 
 class FakeDatabase:
@@ -53,10 +57,12 @@ class FakeTutorAI:
         reply_states: list[TutorState],
         first_turn_state: TutorState = TutorState.ASK_ATTEMPT,
         analysis_skills: list[str] | None = None,
+        reply_likely_correct: bool = False,
     ) -> None:
         self.reply_states = iter(reply_states)
         self.first_turn_state = first_turn_state
         self.analysis_skills = analysis_skills or ["algebra.linear_equation"]
+        self.reply_likely_correct = reply_likely_correct
         self.received_states: list[TutorState] = []
         self.continue_calls = 0
 
@@ -77,7 +83,11 @@ class FakeTutorAI:
     ) -> TutorTurn:
         self.continue_calls += 1
         self.received_states.append(current_state)
-        return TutorTurn(message="Next question", state=next(self.reply_states))
+        return TutorTurn(
+            message="Next question",
+            state=next(self.reply_states),
+            likely_correct=self.reply_likely_correct,
+        )
 
 
 def tutor_context() -> tuple[User, Student, FakeDatabase]:
@@ -164,10 +174,13 @@ def test_entering_transfer_selects_and_reuses_exact_factorization_item(
     db.sessions[session.id] = session
     fake_ai = FakeTutorAI([TutorState.TRANSFER, TutorState.TRANSFER])
     monkeypatch.setattr(tutor_api, "ai", fake_ai)
+    verification_statuses = iter(
+        [VerificationStatus.CORRECT, VerificationStatus.INCORRECT]
+    )
     monkeypatch.setattr(
         tutor_api,
         "verify",
-        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+        lambda _request: VerificationResult(next(verification_statuses)),
     )
     monkeypatch.setattr(
         recommender,
@@ -294,3 +307,139 @@ def test_transfer_entry_does_not_complete_or_update_mastery() -> None:
 
     assert session.current_state == TutorState.VERIFY.value
     assert session.transfer_question_id == "g8alg.factorization.001"
+
+
+def transfer_reply_context(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    likely_correct: bool,
+) -> tuple[User, TutorSession, FakeDatabase]:
+    user, student, db = tutor_context()
+    session = TutorSession(
+        id=1,
+        student_id=student.id,
+        primary_skill="algebra.factorization",
+        transfer_question_id="g8alg.factorization.001",
+        current_state=TutorState.TRANSFER.value,
+        normalized_problem="original equation x + 100 = 200",
+        internal_expected_answer="100",
+        verification_family="numeric",
+    )
+    db.sessions[session.id] = session
+    monkeypatch.setattr(
+        tutor_api,
+        "ai",
+        FakeTutorAI([TutorState.COMPLETE], reply_likely_correct=likely_correct),
+    )
+    return user, session, db
+
+
+@pytest.mark.parametrize(
+    ("status", "likely_correct", "expected_state"),
+    [
+        (VerificationStatus.CORRECT, False, TutorState.COMPLETE),
+        (VerificationStatus.INCORRECT, True, TutorState.TRANSFER),
+        (VerificationStatus.UNSUPPORTED, True, TutorState.TRANSFER),
+        (VerificationStatus.INDETERMINATE, True, TutorState.TRANSFER),
+    ],
+)
+def test_transfer_deterministic_status_is_authoritative(
+    monkeypatch: pytest.MonkeyPatch,
+    status: VerificationStatus,
+    likely_correct: bool,
+    expected_state: TutorState,
+) -> None:
+    user, session, db = transfer_reply_context(
+        monkeypatch,
+        likely_correct=likely_correct,
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(status),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="(x-3)*(x+3)"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is expected_state
+    assert session.current_state == expected_state.value
+
+
+def test_transfer_missing_request_remains_transfer_without_original_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=True)
+    session.transfer_question_id = None
+    monkeypatch.setattr(
+        tutor_api,
+        "_verification_request_for_session",
+        lambda *_args: pytest.fail("transfer must not use the original-session verifier"),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: pytest.fail("missing transfer request must not verify"),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="anything"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.TRANSFER
+    assert session.current_state == TutorState.TRANSFER.value
+
+
+def test_transfer_uses_authored_context_and_no_completion_side_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    requests: list[object] = []
+    transition_events: list[object] = []
+    real_transition = tutor_api.transition_tutor_state
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda request: requests.append(request)
+        or VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda *_args, **_kwargs: pytest.fail("transfer completion must not update mastery"),
+    )
+    monkeypatch.setattr(
+        recommender,
+        "recommend_next_question",
+        lambda *_args, **_kwargs: pytest.fail("transfer completion must not recommend"),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "_verification_request_for_session",
+        lambda *_args: pytest.fail("transfer must not use original-session context"),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "transition_tutor_state",
+        lambda transition: transition_events.append(transition.event)
+        or real_transition(transition),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="(x-3)*(x+3)"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert session.current_state == TutorState.COMPLETE.value
+    assert transition_events == [tutor_api.TutorTransitionEvent.TRANSFER_COMPLETED]
+    assert len(requests) == 1
+    assert isinstance(requests[0], FactorizationVerificationRequest)
+    assert requests[0].reference == "x^2-9"
+    assert requests[0].candidate == "(x-3)*(x+3)"
