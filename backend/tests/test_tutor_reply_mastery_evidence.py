@@ -58,6 +58,7 @@ def reply_context(
     *,
     current_state: TutorState = TutorState.ASK_ATTEMPT,
     verification_family: str | None = "numeric",
+    authored_question_id: str | None = None,
 ) -> tuple[User, TutorSession, FakeDatabase]:
     user = User(id=1, email="parent@example.com", password_hash="hash")
     session = TutorSession(
@@ -68,6 +69,7 @@ def reply_context(
         current_state=current_state.value,
         internal_expected_answer="4",
         verification_family=verification_family,
+        authored_question_id=authored_question_id,
     )
     return user, session, FakeDatabase(session)
 
@@ -187,3 +189,62 @@ def test_ineligible_reply_paths_do_not_record_mastery_evidence(
     reply(user, session, db, intent=intent)
 
     assert events == []
+
+
+def test_invalid_authored_provenance_does_not_record_verified_mastery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = reply_context(
+        authored_question_id="g8alg.does-not-exist.999",
+    )
+    events: list[MasteryEvidenceEvent] = []
+    monkeypatch.setattr(
+        tutor_api,
+        "ai",
+        FakeTutorAI(
+            TutorTurn(
+                message="Tutor response",
+                state=TutorState.COMPLETE,
+                likely_correct=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(tutor_api, "record_mastery_evidence", lambda _db, event: events.append(event))
+
+    reply(user, session, db)
+
+    assert events == []
+
+
+def test_authored_deterministic_mastery_uses_request_family_and_is_non_transfer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = reply_context(
+        verification_family="numeric",
+        authored_question_id="g8alg.factorization.001",
+    )
+    session.primary_skill = "algebra.factorization"
+    events: list[MasteryEvidenceEvent] = []
+    monkeypatch.setattr(
+        tutor_api,
+        "ai",
+        FakeTutorAI(
+            TutorTurn(
+                message="Tutor response",
+                state=TutorState.COMPLETE,
+                likely_correct=False,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(tutor_api, "record_mastery_evidence", lambda _db, event: events.append(event))
+
+    reply(user, session, db)
+
+    assert len(events) == 1
+    assert events[0].verification_method == "factorization"
+    assert events[0].is_transfer is False

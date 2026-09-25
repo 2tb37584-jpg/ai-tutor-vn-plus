@@ -152,6 +152,125 @@ def transfer_session(question_id: str, primary_skill: str) -> TutorSession:
     )
 
 
+def authored_session(question_id: str, primary_skill: str) -> TutorSession:
+    return TutorSession(
+        student_id=1,
+        primary_skill=primary_skill,
+        authored_question_id=question_id,
+        normalized_problem="misleading original session problem",
+        internal_expected_answer="misleading original session answer",
+        verification_family="numeric",
+    )
+
+
+@pytest.mark.parametrize(
+    ("question_id", "request_type", "trusted_field", "candidate_field", "candidate"),
+    [
+        (
+            "g8alg.factorization.001",
+            FactorizationVerificationRequest,
+            "reference",
+            "candidate",
+            "(x-3)*(x+3)",
+        ),
+        (
+            "g8alg.rational-expression-domain.001",
+            DomainConditionVerificationRequest,
+            "reference",
+            "candidate",
+            "x != 2",
+        ),
+    ],
+)
+def test_authored_verification_uses_authored_reference_and_candidate(
+    question_id: str,
+    request_type: type[object],
+    trusted_field: str,
+    candidate_field: str,
+    candidate: str,
+) -> None:
+    item = get_question(question_id)
+    assert item is not None
+    session = authored_session(item.id, item.skill_code)
+
+    request = tutor_api._verification_request_for_session(session, candidate)
+
+    assert isinstance(request, request_type)
+    assert getattr(request, trusted_field) == item.verification_reference
+    assert getattr(request, candidate_field) == candidate
+    assert getattr(request, trusted_field) != session.internal_expected_answer
+    assert verify(request).status is VerificationStatus.CORRECT
+
+
+def test_authored_verification_unknown_id_fails_closed_without_generic_fallback() -> None:
+    session = authored_session("g8alg.does-not-exist.999", "algebra.factorization")
+
+    assert tutor_api._verification_request_for_session(session, "candidate") is None
+
+
+def test_authored_verification_rejects_skill_mismatch() -> None:
+    item = get_question("g8alg.factorization.001")
+    assert item is not None
+    session = authored_session(item.id, "arithmetic.signed_number_operations")
+
+    assert tutor_api._verification_request_for_session(session, "candidate") is None
+
+
+def test_authored_verification_expected_builder_value_error_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = get_question("g8alg.factorization.001")
+    assert item is not None
+    session = authored_session(item.id, item.skill_code)
+
+    def raise_expected_error(item: QuestionBankItem, candidate: str) -> object:
+        raise ValueError("unsupported authored context")
+
+    monkeypatch.setattr(
+        tutor_api,
+        "verification_request_for_candidate",
+        raise_expected_error,
+    )
+
+    assert tutor_api._verification_request_for_session(session, "candidate") is None
+
+
+def test_authored_verification_propagates_unexpected_builder_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    item = get_question("g8alg.factorization.001")
+    assert item is not None
+    session = authored_session(item.id, item.skill_code)
+
+    def raise_unexpected_error(item: QuestionBankItem, candidate: str) -> object:
+        raise TypeError("unexpected authored builder failure")
+
+    monkeypatch.setattr(
+        tutor_api,
+        "verification_request_for_candidate",
+        raise_unexpected_error,
+    )
+
+    with pytest.raises(TypeError, match="unexpected authored builder failure"):
+        tutor_api._verification_request_for_session(session, "candidate")
+
+
+def test_free_form_numeric_verification_remains_available() -> None:
+    session = TutorSession(
+        student_id=1,
+        primary_skill="algebra.linear_equation",
+        normalized_problem="2 + 2",
+        internal_expected_answer="4",
+        verification_family="numeric",
+    )
+
+    request = tutor_api._verification_request_for_session(session, "4")
+
+    assert isinstance(request, NumericVerificationRequest)
+    assert request.expected == "4"
+    assert request.candidate == "4"
+
+
 def test_transfer_verification_requires_persisted_question_id() -> None:
     session = transfer_session(
         "g8alg.factorization.001",

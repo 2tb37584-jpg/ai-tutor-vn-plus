@@ -93,10 +93,33 @@ def _verification_family_for_primary_skill(primary_skill: str) -> str | None:
     return None
 
 
+def _authored_verification_request_for_session(
+    session: TutorSession,
+    candidate: str,
+) -> VerificationRequest | None:
+    authored_question_id = session.authored_question_id
+    if authored_question_id is None:
+        return None
+
+    item = get_question(authored_question_id)
+    if item is None:
+        return None
+    if session.primary_skill and item.skill_code != session.primary_skill:
+        return None
+
+    try:
+        return verification_request_for_candidate(item, candidate)
+    except ValueError:
+        return None
+
+
 def _verification_request_for_session(
     session: TutorSession,
     candidate: str,
 ) -> VerificationRequest | None:
+    if session.authored_question_id is not None:
+        return _authored_verification_request_for_session(session, candidate)
+
     try:
         family = ProblemFamily(session.verification_family)
     except (TypeError, ValueError):
@@ -397,7 +420,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                     retry_count,
                     decision.action.value,
                     str(mastery_eligible).lower(),
-                    session.verification_family,
+                    verification_request.family.value,
                 )
                 if mastery_eligible:
                     record_mastery_evidence(
@@ -413,7 +436,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                             ),
                             evidence_type=MasteryEvidenceType.DETERMINISTIC_VERIFICATION,
                             verification_status=MasteryVerificationStatus.VERIFIED,
-                            verification_method=session.verification_family,
+                            verification_method=verification_request.family.value,
                             confidence=1.0,
                             hint_count={
                                 TutorState.ASK_ATTEMPT: 0,
