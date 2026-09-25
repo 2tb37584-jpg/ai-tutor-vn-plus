@@ -11,6 +11,7 @@ from app.schemas.tutor import (
     TutorState,
     TutorTurn,
 )
+from app.services.mastery import MasteryEvidenceType, MasteryOutcome
 import app.services.question_bank as question_bank
 from app.services.question_bank import get_transfer_question_for_skill
 from app.services.verifier import (
@@ -177,10 +178,16 @@ def test_entering_transfer_selects_and_reuses_exact_factorization_item(
     verification_statuses = iter(
         [VerificationStatus.CORRECT, VerificationStatus.INCORRECT]
     )
+    evidence: list[object] = []
     monkeypatch.setattr(
         tutor_api,
         "verify",
         lambda _request: VerificationResult(next(verification_statuses)),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda _db, event: evidence.append(event),
     )
     monkeypatch.setattr(
         recommender,
@@ -206,6 +213,7 @@ def test_entering_transfer_selects_and_reuses_exact_factorization_item(
     assert session.current_state == TutorState.TRANSFER.value
     assert session.transfer_question_id == "g8alg.factorization.001"
     assert selected_skills == ["algebra.factorization"]
+    assert evidence == []
 
     tutor_api.tutor_reply(
         TutorReplyRequest(session_id=session.id, student_message="later"),
@@ -216,6 +224,8 @@ def test_entering_transfer_selects_and_reuses_exact_factorization_item(
     assert session.current_state == TutorState.TRANSFER.value
     assert session.transfer_question_id == "g8alg.factorization.001"
     assert selected_skills == ["algebra.factorization"]
+    assert len(evidence) == 1
+    assert evidence[0].is_transfer is True
 
 
 @pytest.mark.parametrize(
@@ -353,10 +363,16 @@ def test_transfer_deterministic_status_is_authoritative(
         monkeypatch,
         likely_correct=likely_correct,
     )
+    evidence: list[object] = []
     monkeypatch.setattr(
         tutor_api,
         "verify",
         lambda _request: VerificationResult(status),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda _db, event: evidence.append(event),
     )
 
     response = tutor_api.tutor_reply(
@@ -367,6 +383,23 @@ def test_transfer_deterministic_status_is_authoritative(
 
     assert response.tutor.state is expected_state
     assert session.current_state == expected_state.value
+    assert len(evidence) == (1 if status in {VerificationStatus.CORRECT, VerificationStatus.INCORRECT} else 0)
+    if evidence:
+        event = evidence[0]
+        assert event.outcome is (
+            MasteryOutcome.CORRECT
+            if status is VerificationStatus.CORRECT
+            else MasteryOutcome.INCORRECT
+        )
+        assert event.evidence_type is MasteryEvidenceType.DETERMINISTIC_VERIFICATION
+        assert event.verification_status is tutor_api.MasteryVerificationStatus.VERIFIED
+        assert event.verification_method == "factorization"
+        assert event.student_id == session.student_id
+        assert event.session_id == session.id
+        assert event.confidence == 1.0
+        assert event.hint_count == 0
+        assert event.is_transfer is True
+        assert event.skill_code == session.primary_skill
 
 
 def test_transfer_missing_request_remains_transfer_without_original_fallback(
@@ -384,6 +417,11 @@ def test_transfer_missing_request_remains_transfer_without_original_fallback(
         "verify",
         lambda _request: pytest.fail("missing transfer request must not verify"),
     )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda *_args, **_kwargs: pytest.fail("missing transfer request must not record evidence"),
+    )
 
     response = tutor_api.tutor_reply(
         TutorReplyRequest(session_id=session.id, student_message="anything"),
@@ -395,11 +433,12 @@ def test_transfer_missing_request_remains_transfer_without_original_fallback(
     assert session.current_state == TutorState.TRANSFER.value
 
 
-def test_transfer_uses_authored_context_and_no_completion_side_effects(
+def test_transfer_uses_authored_context_without_duplicate_or_recommender_side_effects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
     requests: list[object] = []
+    evidence: list[object] = []
     transition_events: list[object] = []
     real_transition = tutor_api.transition_tutor_state
     monkeypatch.setattr(
@@ -411,7 +450,7 @@ def test_transfer_uses_authored_context_and_no_completion_side_effects(
     monkeypatch.setattr(
         tutor_api,
         "record_mastery_evidence",
-        lambda *_args, **_kwargs: pytest.fail("transfer completion must not update mastery"),
+        lambda _db, event: evidence.append(event),
     )
     monkeypatch.setattr(
         recommender,
@@ -439,7 +478,37 @@ def test_transfer_uses_authored_context_and_no_completion_side_effects(
     assert response.tutor.state is TutorState.COMPLETE
     assert session.current_state == TutorState.COMPLETE.value
     assert transition_events == [tutor_api.TutorTransitionEvent.TRANSFER_COMPLETED]
+    assert len(evidence) == 1
+    assert evidence[0].is_transfer is True
     assert len(requests) == 1
     assert isinstance(requests[0], FactorizationVerificationRequest)
     assert requests[0].reference == "x^2-9"
     assert requests[0].candidate == "(x-3)*(x+3)"
+
+
+def test_transfer_correct_without_primary_skill_skips_mastery_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    session.primary_skill = None
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda *_args, **_kwargs: pytest.fail(
+            "missing primary skill must not record transfer evidence"
+        ),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="(x-3)*(x+3)"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert session.current_state == TutorState.COMPLETE.value

@@ -310,16 +310,39 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                 payload.student_message,
             )
             next_state = TutorState.TRANSFER
-            if (
-                verification_request is not None
-                and verify(verification_request).status is VerificationStatus.CORRECT
-            ):
-                next_state = transition_tutor_state(
-                    TutorTransitionInput(
-                        state=current_state,
-                        event=TutorTransitionEvent.TRANSFER_COMPLETED,
+            if verification_request is not None:
+                verification_result = verify(verification_request)
+                if (
+                    session.primary_skill
+                    and verification_result.status
+                    in {VerificationStatus.CORRECT, VerificationStatus.INCORRECT}
+                ):
+                    record_mastery_evidence(
+                        db,
+                        MasteryEvidenceEvent(
+                            student_id=session.student_id,
+                            session_id=session.id,
+                            skill_code=session.primary_skill,
+                            outcome=(
+                                MasteryOutcome.CORRECT
+                                if verification_result.status is VerificationStatus.CORRECT
+                                else MasteryOutcome.INCORRECT
+                            ),
+                            evidence_type=MasteryEvidenceType.DETERMINISTIC_VERIFICATION,
+                            verification_status=MasteryVerificationStatus.VERIFIED,
+                            verification_method=verification_request.family.value,
+                            confidence=1.0,
+                            hint_count=0,
+                            is_transfer=True,
+                        ),
                     )
-                )
+                if verification_result.status is VerificationStatus.CORRECT:
+                    next_state = transition_tutor_state(
+                        TutorTransitionInput(
+                            state=current_state,
+                            event=TutorTransitionEvent.TRANSFER_COMPLETED,
+                        )
+                    )
             tutor_turn = _turn_with_authoritative_state(tutor_turn, next_state)
         else:
             verification_request = _verification_request_for_session(
