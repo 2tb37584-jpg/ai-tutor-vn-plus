@@ -1,378 +1,418 @@
 # AI Tutor VN — Development Workflow
 
+Version: 2026-09-25
+Mode: GitHub PR-based handoff
+
 ## Purpose
 
-Tăng tốc phát triển mà không giảm chất lượng, không mở rộng scope tùy tiện, và không làm mất các cổng kiểm tra quan trọng của AI Tutor VN.
+Tài liệu này là protocol phát triển bền vững cho AI Tutor VN.
 
-Nguyên tắc chính:
+Mục tiêu:
 
-- tự động hóa thao tác lặp;
-- giữ task nhỏ và có acceptance criteria rõ ràng;
-- dùng test/eval theo tầng để rút ngắn feedback loop;
-- ChatGPT làm architecture, decomposition, review, test/eval design và documentation;
-- Codex chủ yếu implementation/debugging trong scope hẹp;
-- Git repository vẫn là source of truth cho code;
-- không chạy live LLM eval tốn credits nếu unit/integration test có thể phát hiện lỗi trước.
+- giữ GitHub/Git repository là source of truth;
+- cho phép đổi ChatGPT account mà không mất trạng thái dự án;
+- tách rõ vai trò ChatGPT và Codex;
+- để Codex implementation trên branch riêng và bàn giao bằng Pull Request;
+- bắt buộc ChatGPT review trước task DONE và merge;
+- giữ task nhỏ, reviewable và có acceptance criteria rõ ràng;
+- ưu tiên deterministic tests/evals trước live LLM validation;
+- bảo vệ secrets và dữ liệu học sinh.
 
----
+## 1. Source of truth hierarchy
 
-## 1. Standard development loop
-
-Luồng chuẩn:
+Khi có xung đột:
 
 ```text
-Task ACTIVE
-→ xác định micro-task
-→ viết spec/Codex prompt
-→ implementation
-→ fast targeted test
-→ review packet
-→ ChatGPT review diff
-→ integration/full test
-→ commit
-→ đóng task
+1. GitHub/Git repository hiện tại
+2. Pull Request hiện tại của task
+3. TASK_INDEX.md
+4. task file đang ACTIVE
+5. architecture/product-rule documents
+6. 08_CURRENT_STATE.md
+7. conversation history / remembered context
+```
+
+Không suy luận trạng thái dự án chỉ từ chat cũ nếu Git/PR/task-control nói khác.
+
+## 2. Responsibility split
+
+### ChatGPT owns
+
+- architecture;
+- product/engineering decisions;
+- trust-boundary decisions;
+- chọn task kế tiếp;
+- decomposition thành micro-task;
+- task specification;
+- acceptance criteria;
+- test/eval design;
+- Codex handoff prompt;
+- Pull Request diff review;
+- regression interpretation;
+- closure approval;
+- documentation decisions;
+- task sequencing.
+
+Trước mỗi implementation task, ChatGPT phải xác định:
+
+```text
+Goal
+Context
+Allowed files
+Forbidden scope
+Acceptance criteria
+Tests
+Stop conditions
+Delivery workflow
+```
+
+### Codex owns
+
+- tạo/switch task branch;
+- task lifecycle start;
+- implementation trong scope đã khóa;
+- scoped debugging;
+- thêm/sửa tests trong allowed scope;
+- chạy focused tests;
+- chạy full/integration tests khi môi trường cho phép;
+- commit trên task branch;
+- push task branch;
+- tạo/update Draft Pull Request;
+- ghi completion packet vào PR;
+- chuyển PR sang Ready for review khi validation xong.
+
+Codex không tự thay đổi architecture hoặc trust boundary.
+
+### Human/user owns
+
+- cấp GitHub access/authentication;
+- xử lý environment-specific issues;
+- chạy local tests nếu Codex runtime không dùng được;
+- merge PR sau khi ChatGPT đã approve closure.
+
+User không cần copy-paste toàn bộ diff giữa Codex và ChatGPT nếu ChatGPT account đang dùng có GitHub access.
+
+## 3. Core workflow
+
+```text
+ChatGPT
+→ xác định task
+→ inspect đúng seam cần thiết
+→ khóa task spec
+→ tạo Codex handoff hoàn chỉnh
+
+Codex
+→ sync main
+→ tạo/switch task branch
+→ task start
+→ xác nhận ACTIVE + CONSISTENT
+→ implement đúng allowed scope
+→ chạy focused tests
+→ chạy full/integration tests
+→ git diff --check
+→ commit trên task branch
+→ push branch
+→ mở/update Draft PR
+→ ghi completion packet vào PR
+→ khi validation xong: mark Ready for review
+→ STOP
+
+ChatGPT
+→ đọc repo + task file + PR body + complete PR diff
+→ review production diff
+→ review tests
+→ kiểm tra acceptance criteria
+→ kiểm tra scope
+→ kiểm tra test evidence
+→ yêu cầu sửa nếu cần
+
+Codex
+→ sửa trên cùng task branch/PR nếu được yêu cầu
+→ rerun validation
+→ update PR
+→ Ready for review lại
+
+ChatGPT
+→ nếu đạt: REVIEW_RESULT = APPROVED_FOR_CLOSURE
+
+Codex hoặc user
+→ cập nhật task file với validation evidence
+→ task done
+→ task status
+→ review lifecycle
+→ push closure metadata lên cùng PR nếu cần
+
+ChatGPT
+→ review closure/status lần cuối
+
+User
+→ merge PR vào main
+
+GitHub
+→ main trở thành source of truth mới
+
+ChatGPT
 → chọn task kế tiếp
 ```
 
-Không commit implementation trước khi diff được review.
-
-Không mở task mới khi task ACTIVE hiện tại chưa đạt acceptance criteria.
-
----
-
-## 2. One-command developer layer
-
-Mục tiêu là thay các chuỗi PowerShell lặp đi lặp lại bằng các lệnh ngắn, dễ nhớ.
-
-### Before M00-06
-
-Các lệnh ở đây là các chuỗi PowerShell thủ công; developer command layer chưa tồn tại.
-
-### After M00-06
-
-Developer command layer có sẵn tại repository root:
-
-```powershell
-.\dev.ps1 status
-.\dev.ps1 test eval
-.\dev.ps1 test full
-.\dev.ps1 review
-.\dev.ps1 snapshot
-.\dev.ps1 task status
-.\dev.ps1 task start Mxx-yy
-.\dev.ps1 task done Mxx-yy
-```
-
-Lifecycle commands đã được triển khai. `task done` chỉ thành công khi task là ACTIVE duy nhất
-và mọi checkbox trong `## Acceptance checklist` đã được đánh dấu `[x]`. Commands không tự chọn
-task tiếp theo, không gọi live/provider API, và mọi lifecycle change phải được kiểm tra bằng
-`.\dev.ps1 review`.
-
-### Windows execution policy
-
-Nếu PowerShell chặn việc chạy script, dùng override chỉ cho terminal hiện tại:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
-```
-
-`Scope Process` chỉ ảnh hưởng PowerShell process hiện tại và tự mất khi đóng terminal.
-Không cần thay đổi execution policy ở cấp machine hoặc user vĩnh viễn.
-
-### `status`
-
-Nên hiển thị tối thiểu:
-
-- Git HEAD;
-- working tree;
-- task ACTIVE;
-- Docker service status cơ bản;
-- không in API key hoặc secret.
-
-### `test eval`
-
-Chạy deterministic eval target hiện tại:
-
-```powershell
-docker compose exec backend pytest -q tests/test_eval_runner.py
-```
-
-Không gọi live provider mặc định.
-
-### `test full`
-
-Chạy full backend regression suite.
-
-Có thể mở rộng frontend test/build sau khi frontend test suite đủ ổn định.
-
-### `review`
-
-Chạy tối thiểu:
+Nguyên tắc:
 
 ```text
-git diff --check
-git diff --stat
-git status --short
+ChatGPT specifies and reviews.
+Codex implements and validates.
+GitHub PR carries the handoff.
+Git main records accepted truth.
 ```
 
-Có thể bổ sung danh sách file thay đổi.
+## 4. Branch policy
 
-### `snapshot`
+Mọi implementation task phải chạy trên branch riêng.
 
-Tạo project snapshot ngắn, không chứa secrets, ví dụ:
+Quy ước:
 
 ```text
-HEAD: <sha>
-ACTIVE: M09-13
-Git: clean
-Backend tests: pass
-Eval corpus: 100
-Phase: late Phase 1
-Provider API mode: chat_completions
+codex/<TASK-ID>
 ```
-
-Snapshot dùng để bắt đầu chat mới hoặc khôi phục context nhanh.
-
-Không bao giờ ghi API key vào snapshot.
-
-Snapshot chỉ in metadata provider an toàn (`API_MODE`) khi backend Docker đang khả dụng;
-không in `.env`, environment variables, hoặc API key.
-
----
-
-## 3. Three-tier test strategy
-
-Không dùng full test/live eval cho mọi thay đổi nhỏ.
-
-### Tier 1 — Fast gate
-
-Chạy sau mỗi implementation nhỏ.
 
 Ví dụ:
 
 ```text
-unit test đúng module
-targeted regression test
+codex/M05-17
+codex/M10-04
+codex/M08-10
 ```
 
-Mục tiêu: phản hồi trong vài giây.
-
-### Tier 2 — Integration gate
-
-Chạy khi task implementation sắp hoàn tất.
-
-Ví dụ:
+Setup/docs-only work có thể dùng:
 
 ```text
-full backend test suite
-frontend build/test nếu task liên quan frontend
-git diff --check
+chore/<short-name>
 ```
 
-Mục tiêu: phát hiện regression trước commit.
+Codex không được implementation trực tiếp trên `main`.
 
-### Tier 3 — Live model gate
-
-Chỉ dùng khi thay đổi có thể ảnh hưởng hành vi LLM, prompt, structured output, provider compatibility hoặc eval semantics.
-
-Thứ tự ưu tiên:
-
-```text
-representative subset (ví dụ 10 cases)
-→ review failures
-→ full 100-case live baseline tại milestone
-```
-
-Không chạy 100 live cases chỉ để phát hiện lỗi mà unit test có thể bắt được.
-
----
-
-## 4. Task lifecycle automation
-
-Task lifecycle automation tránh sửa task status thủ công ở nhiều file.
-
-Interface hiện có:
+Trước task:
 
 ```powershell
-.\dev.ps1 task status
-.\dev.ps1 task start Mxx-yy
-.\dev.ps1 task done Mxx-yy
+git switch main
+git pull --ff-only
+git switch -c codex/<TASK-ID>
 ```
 
-Automation:
+Nếu branch đã tồn tại:
 
-- đọc `TASK_INDEX.md`;
-- xác nhận tối đa một task ACTIVE;
-- đồng bộ status giữa task file và `TASK_INDEX.md`;
-- từ chối `done` nếu acceptance criteria/checklist chưa được xác nhận;
-- không tự chọn task mới nếu source of truth chưa chỉ định;
-- không sửa code sản phẩm.
+```powershell
+git switch codex/<TASK-ID>
+```
 
-Sau lifecycle change, chạy `.\dev.ps1 review` trước commit. Không có lifecycle command nào gọi
-live/provider API.
+## 5. Main branch protection
 
----
-
-## 5. Codex review packet
-
-Mỗi task Codex sau implementation nên trả về một packet chuẩn:
+GitHub `main` phải được bảo vệ tối thiểu bằng:
 
 ```text
-FILES_CHANGED
-IMPLEMENTATION_SUMMARY
-TEST_TARGETED
-TEST_FULL
-DIFF_STAT
-GIT_STATUS
-KNOWN_RISKS
+Require a pull request before merging
+Block force pushes
+Restrict deletions
 ```
 
-Nếu test chưa chạy hoặc fail, phải nói rõ.
+Không push trực tiếp implementation vào `main`.
 
-Codex không commit trừ khi task spec cho phép rõ ràng.
+## 6. Pull Request lifecycle
 
-ChatGPT review diff trước commit.
+### Draft PR while Codex is working
 
----
+PR phải ở Draft cho tới khi:
 
-## 6. Codex scope rules
+```text
+implementation complete
+focused validation complete
+full validation complete when required
+git diff --check passes
+completion packet updated
+```
+
+### Ready for review
+
+Chỉ khi các điều kiện trên đạt, Codex:
+
+```text
+CHATGPT_REVIEW_READY: true
+```
+
+và chuyển Draft PR thành:
+
+```text
+Ready for review
+```
+
+`Ready for review` là tín hiệu bàn giao chính thức từ Codex sang ChatGPT.
+
+### Merge
+
+Codex không merge.
+
+Merge chỉ sau:
+
+```text
+ChatGPT: APPROVED_FOR_CLOSURE
+task lifecycle: DONE + CONSISTENT
+final closure review complete
+```
+
+## 7. Pull Request body contract
+
+PR body tối thiểu:
+
+```markdown
+# Task
+
+<TASK-ID> — <name>
+
+## Task contract
+
+`tasks/<MODULE>/<TASK-ID>.md`
+
+## Status
+
+CHATGPT_REVIEW_READY: false
+
+## Files changed
+
+- ...
+
+## Implementation summary
+
+...
+
+## Focused validation
+
+...
+
+## Full validation
+
+...
+
+## Diff check
+
+`git diff --check`: PASS/NOT RUN
+
+## Known risks
+
+...
+
+## Reviewer instructions
+
+Read:
+- TASK_INDEX.md
+- 08_CURRENT_STATE.md
+- 09_DEV_WORKFLOW.md
+- task file above
+- complete PR diff
+
+Do not merge automatically.
+```
+
+Khi hoàn tất:
+
+```text
+CHATGPT_REVIEW_READY: true
+```
+
+## 8. Mandatory review gate
+
+Codex không được self-approve implementation.
+
+Trước:
+
+```text
+task done
+merge PR
+```
+
+ChatGPT phải review tối thiểu:
+
+- production diff;
+- test diff;
+- focused test result;
+- full regression result theo scope;
+- PR file list;
+- allowed-file compliance;
+- forbidden-scope compliance;
+- acceptance checklist;
+- known risks;
+- trust-boundary implications;
+- answer-leakage implications khi liên quan Tutor Engine.
+
+Nếu chưa có PR diff review, task chưa ready to close.
+
+Nếu test chưa chạy do environment thiếu runtime/dependency:
+
+- Codex phải báo rõ;
+- không được claim PASS;
+- user có thể chạy local;
+- test evidence local phải được đưa vào PR/task evidence;
+- ChatGPT review evidence trước closure.
+
+## 9. Commit policy
+
+Codex được phép commit trước ChatGPT review, nhưng chỉ trên task branch.
+
+Được phép:
+
+```text
+commit on codex/<TASK-ID>
+push codex/<TASK-ID>
+update PR
+```
+
+Không được phép:
+
+```text
+commit/push implementation directly to main
+merge PR
+mark task DONE before ChatGPT approval
+```
+
+Một task branch có thể có nhiều commit trong quá trình review/fix.
+
+## 10. Task size and scope rules
 
 Mỗi Codex task mặc định:
 
-- 1 goal;
-- 1 micro-task logic;
-- khoảng 2–6 allowed files;
-- explicit forbidden scope;
-- acceptance criteria;
-- targeted tests;
-- stop conditions.
+```text
+1 goal
+1 small logical change
+2–6 files
+```
 
-Codex phải dừng và báo lại nếu:
+Task phải có:
 
-- cần file ngoài allowed scope;
+```text
+Goal
+Context
+Allowed files
+Forbidden scope
+Implementation requirements
+Acceptance criteria
+Tests
+Stop conditions
+Delivery workflow
+Return/PR format
+```
+
+Codex phải STOP và báo lại nếu:
+
+- cần sửa file ngoài allowed scope;
 - cần dependency mới;
-- cần thay kiến trúc;
-- cần schema/database migration ngoài dự kiến;
-- task phát triển thành nhiều subsystem;
-- acceptance criteria mơ hồ.
+- cần thay architecture;
+- cần migration/schema ngoài dự kiến;
+- cần thay public contract ngoài task;
+- task bắt đầu chạm nhiều subsystem;
+- acceptance criteria không còn rõ;
+- implementation cần phá trust boundary đã khóa.
 
-Nếu task phình to, tách task mới thay vì mở rộng vô hạn.
+## 11. Task lifecycle
 
----
-
-## 7. Project snapshot instead of hand-maintained current state
-
-`08_CURRENT_STATE.md` có thể bị stale nếu cập nhật bằng tay.
-
-Hướng ưu tiên:
-
-- repository/task index = source of truth;
-- `snapshot` được sinh tự động từ repo;
-- Project documentation chỉ lưu architecture, rules và decisions bền vững;
-- trạng thái runtime/ngày hiện tại nên được generated thay vì copy tay.
-
-Snapshot phải ngắn và an toàn để paste vào ChatGPT.
-
----
-
-## 8. CI policy
-
-Khi GitHub CI được thiết lập, nên tự động chạy trên push/PR:
-
-```text
-diff/lint checks
-backend tests
-frontend tests/build
-offline eval regression
-```
-
-Không chạy live paid-model eval trên mọi commit/PR.
-
-Live eval nên:
-
-- manual;
-- milestone-triggered;
-- hoặc chạy khi thay đổi prompt/provider/tutor behavior thực sự cần.
-
----
-
-## 9. Secrets and student-data safety
-
-Automation không được:
-
-- in API key;
-- lưu API key vào snapshot;
-- commit `.env`;
-- log dữ liệu học sinh không cần thiết;
-- đưa raw student PII vào eval fixtures.
-
-Các lệnh kiểm tra config chỉ nên in boolean/config metadata không nhạy cảm.
-
----
-
-## 10. What NOT to do for speed
-
-Không tăng tốc bằng cách:
-
-- chuyển sang microservices khi chưa có bằng chứng cần thiết;
-- cho Codex tự do đọc/sửa toàn repo;
-- bỏ unit tests;
-- bỏ ChatGPT diff review;
-- chạy live LLM eval thay cho deterministic tests;
-- thêm framework/dependency chỉ để “tiện” mà chưa có ROI rõ;
-- gom nhiều thay đổi logic khác nhau vào cùng một task.
-
-Mục tiêu là giảm thao tác lặp, không giảm kỷ luật kỹ thuật.
-
----
-
-## 11. Adoption plan
-
-### Current task
-
-Tiếp tục hoàn thành:
-
-```text
-M09-18 — Refine Primary-Skill Specificity Precedence
-```
-
-Không chen implementation workflow automation vào M09-18. M09-18 phải đạt acceptance criteria, targeted/full tests và targeted live validation trước khi đóng.
-
-### Mandatory next workflow-improvement milestone
-
-Ngay sau khi M09-18 hoàn tất và task-control sạch, **không mở thêm M09 implementation task mới trước khi thực hiện workflow automation**, trừ khi M09-18 phát hiện một blocker nghiêm trọng bắt buộc phải sửa để giữ repository ở trạng thái an toàn.
-
-Task kế tiếp được ưu tiên bắt buộc:
-
-```text
-M00-06 — Developer Workflow Automation
-```
-
-M00-06 phải triển khai developer command layer thực tế, không chỉ là tài liệu.
-
-Scope đầu tiên:
-
-1. `dev.ps1` với:
-   - `status`;
-   - `review`;
-   - `test eval`;
-   - `test full`;
-   - `snapshot`;
-2. tài liệu usage ngắn;
-3. không dependency mới nếu không cần;
-4. mặc định 2–4 files;
-5. không thay đổi business logic;
-6. không gọi live paid-model eval mặc định;
-7. không in secret/API key;
-8. output phải đủ ngắn để paste lại vào ChatGPT.
-
-Sau M00-06, ưu tiên task riêng:
-
-```text
-M00-07 — Task Lifecycle Automation
-```
-
-M00-07 dự kiến cung cấp:
+Repository có task-control workflow:
 
 ```text
 task status
@@ -380,62 +420,550 @@ task start Mxx-yy
 task done Mxx-yy
 ```
 
-để đồng bộ `TASK_INDEX.md` và task file, tránh tình trạng một nơi `DONE` nhưng task file vẫn `ACTIVE`.
+Trên Windows/PowerShell:
 
-### Enforcement until M00-06 is complete
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\dev.ps1 task status
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\dev.ps1 task start Mxx-yy
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\dev.ps1 task done Mxx-yy
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\dev.ps1 review
+```
 
-Cho đến khi M00-06 được implement:
+Sau `task start` hoặc `task done`, phải kiểm tra:
 
-- tiếp tục dùng workflow thủ công hiện tại;
-- không coi các command trong mục 2 là đã tồn tại;
-- không ghi nhận `dev.ps1` là available nếu file chưa có trong Git;
-- mọi commit vẫn phải qua targeted test, diff review và full test theo scope;
-- sau M09-18, ưu tiên M00-06 trước khi tiếp tục mở rộng Phase 1/Phase 2.
+```text
+ACTIVE: ...
+INDEX_STATUS: ...
+FILE_STATUS: ...
+CONSISTENT: yes
+```
 
----
+Nếu `CONSISTENT: no`, không tiếp tục.
 
-## 12. Success criteria for the workflow
+Task file phải có heading chính xác:
 
-Workflow mới được coi là có ích khi:
+```text
+## Acceptance checklist
+```
 
-- số lệnh thủ công mỗi checkpoint giảm rõ rệt;
-- không tăng regression;
-- task status ít bị lệch;
-- chat mới khôi phục context nhanh bằng snapshot;
-- live API credits không bị tiêu cho lỗi deterministic;
-- Codex task vẫn nhỏ và reviewable;
-- source of truth vẫn là Git repository.
+`task done` chỉ chạy sau:
 
----
+```text
+ChatGPT REVIEW_RESULT: APPROVED_FOR_CLOSURE
+```
 
-## 13. Direction and scope guardrails
+## 12. Standard Codex handoff contract
 
-Before creating or starting a new implementation task, record:
+Template:
 
-- Roadmap link
-- Core-loop impact
-- Why now
-- Why not defer
-- Exit criterion affected
+```text
+TASK: <ID> — <name>
 
-A task should normally proceed only when it directly advances the current roadmap phase, closes core-loop integration debt, fixes a measured regression/blocker, satisfies an acceptance/exit criterion, or is supported by concrete eval/product evidence.
+Goal:
+...
 
-### Integration-first rule
+Context:
+...
 
-Once module contracts are stable, prefer end-to-end wiring and integration tests/evals over creating new abstractions, adapters, policy layers, or feature families.
+Allowed files:
+- ...
 
-### Evidence-before-expansion rule
+Forbidden scope:
+- ...
 
-Do not add a new domain, verifier family, UI surface, dependency, service, or subsystem merely because it may be useful later. Require concrete evidence such as an eval case, measured failure, user need, core-loop blocker, or roadmap requirement.
+Implementation requirements:
+1. ...
 
-### Documentation proportionality
+Acceptance criteria:
+- ...
 
-Use long architecture/audit documents only for material decisions involving architecture, schema/data model, security/privacy, mastery semantics, tutor behavior, verification semantics, or provider integration. Ordinary scoped implementation tasks should stay concise.
+Tests:
+- focused ...
+- full ...
 
-### Abstraction gate
+Stop conditions:
+- ...
 
-Do not create a new service, adapter, resolver, interface, or shared abstraction unless it removes real duplicated logic, enforces an important product/safety invariant, establishes a necessary typed boundary, or is required by multiple current callers.
+DELIVERY WORKFLOW
 
-### Module-exit gate
+Repository:
+<OWNER>/ai-tutor-vn-plus
 
-Before moving to a new module or feature family, check whether the current core-loop module still has material integration debt. Unit-tested components are not considered fully integrated when the roadmap requires them to participate in the live product flow.
+Branch:
+codex/<TASK-ID>
+
+Base:
+main
+
+1. Sync main.
+2. Create/switch task branch.
+3. Start repository task lifecycle.
+4. Confirm ACTIVE + CONSISTENT.
+5. Implement only allowed scope.
+6. Run focused validation.
+7. Run full validation required by task.
+8. Run git diff --check and git status.
+9. Commit task-scope changes on task branch.
+10. Push task branch.
+11. Open/update Draft PR to main.
+12. Put completion packet in PR body.
+13. When implementation and validation are complete:
+    - set CHATGPT_REVIEW_READY: true
+    - mark PR Ready for review.
+14. STOP.
+
+DO NOT:
+- merge;
+- push directly to main;
+- mark task DONE;
+- broaden scope.
+
+ChatGPT review is the closure gate.
+```
+
+## 13. Codex completion packet
+
+PR body/report nên có:
+
+```text
+TASK_STATUS
+FILES_CHANGED
+IMPLEMENTATION_SUMMARY
+TESTS_ADDED
+FOCUSED_TEST_RESULT
+FULL_TEST_RESULT
+DIFF_CHECK
+GIT_STATUS
+KNOWN_RISKS
+```
+
+Task-specific sections có thể thêm khi hữu ích.
+
+Nếu test chưa chạy:
+
+```text
+NOT RUN
+reason: ...
+```
+
+Không được ghi PASS nếu không thực sự chạy.
+
+## 14. ChatGPT review result contract
+
+Nếu có blocker:
+
+```text
+REVIEW_RESULT: CHANGES_REQUIRED
+
+BLOCKERS
+- ...
+
+REQUIRED_CHANGES
+- ...
+
+WHY
+- ...
+
+NEXT_CODEX_ACTION
+- ...
+```
+
+Nếu đạt:
+
+```text
+REVIEW_RESULT: APPROVED_FOR_CLOSURE
+
+ACCEPTANCE_STATUS
+...
+
+TEST_EVIDENCE
+...
+
+SCOPE_CHECK
+...
+
+KNOWN_RISKS
+...
+
+CLOSURE_ACTION
+...
+```
+
+## 15. Test strategy
+
+### Tier 1 — Focused deterministic gate
+
+Ví dụ:
+
+```text
+unit test đúng module
+focused API regression
+focused migration test
+focused verifier test
+```
+
+### Tier 2 — Full deterministic/integration gate
+
+Trước closure:
+
+```text
+full backend pytest
+frontend lint
+frontend production build
+offline eval regression
+```
+
+tùy scope.
+
+### Tier 3 — Live model gate
+
+Chỉ dùng khi thay đổi ảnh hưởng model/prompt/provider behavior.
+
+Không dùng paid live eval thay deterministic tests.
+
+## 16. Backend validation conventions
+
+Backend venv:
+
+```text
+backend\.venv
+```
+
+Từ `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q <focused-test>
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Nếu Codex environment không chạy được Python:
+
+```text
+Codex implements
+→ user runs tests locally
+→ evidence được đưa vào PR
+→ ChatGPT reviews evidence
+```
+
+## 17. Frontend validation conventions
+
+Trên PowerShell dùng:
+
+```powershell
+npm.cmd run lint
+npm.cmd run build
+```
+
+Nếu dependencies chưa materialize và repo không có lockfile:
+
+```powershell
+npm.cmd install --no-package-lock
+```
+
+Sau đó kiểm tra:
+
+```powershell
+git status --short
+```
+
+## 18. Git/GitHub validation conventions
+
+Trước Ready for review:
+
+```powershell
+git diff --check
+git status --short
+git diff main...HEAD --stat
+```
+
+PR phải trỏ:
+
+```text
+base: main
+head: codex/<TASK-ID>
+```
+
+Windows warning `LF will be replaced by CRLF` không tự động là blocker.
+
+## 19. GitHub CLI conventions
+
+Kiểm tra:
+
+```powershell
+gh auth status
+```
+
+Không in/copy raw authentication token.
+
+Useful commands:
+
+```powershell
+gh repo view
+gh pr create
+gh pr view
+gh pr ready
+gh pr status
+```
+
+Nếu `gh` không khả dụng trong Codex environment, Codex được phép push branch và user tạo PR thủ công.
+
+## 20. Product/architecture guardrails
+
+Luôn giữ:
+
+- Socratic tutoring trước direct-answer solving;
+- không lộ final answer quá sớm;
+- deterministic verification là authority khi khả thi;
+- model `likely_correct` không tự động trở thành verified correctness;
+- generation và verification tách biệt khi có thể;
+- mastery update cần trusted evidence;
+- student/minor data phải được bảo vệ;
+- không thêm dependency nếu chưa giải thích lợi ích;
+- modular monolith cho tới khi có bằng chứng cần microservices.
+
+Khi sửa:
+
+```text
+API
+→ update schema + tests
+
+business logic
+→ add unit/regression test
+
+tutor behavior
+→ add eval/anti-answer-leakage case khi phù hợp
+```
+
+## 21. Trust-boundary rule
+
+Nếu client chỉ chọn `question_id`, server phải resolve trusted server-side item.
+
+Không tin client copies của:
+
+```text
+problem_text
+expected_answer
+verification_family
+difficulty
+```
+
+Nếu persisted trusted identity không resolve được:
+
+```text
+fail closed
+```
+
+## 22. Secrets and student-data safety
+
+Không được:
+
+- in API key;
+- đưa raw token vào PR;
+- commit `.env`;
+- log secrets;
+- đưa raw student PII vào eval fixture;
+- đưa unnecessary minor/student data vào task report;
+- copy private data vào public test artifacts.
+
+Repo có thể là public tùy GitHub plan, nên secret hygiene là bắt buộc.
+
+## 23. Conversation/account recovery protocol
+
+ChatGPT account có thể thay đổi.
+
+Không dựa vào memory account cũ.
+
+Khi user nói `tiếp tục`, `continue`, hoặc `resume project`, ChatGPT nên đọc:
+
+```text
+1. TASK_INDEX.md
+2. 08_CURRENT_STATE.md
+3. 09_DEV_WORKFLOW.md
+4. task ACTIVE file
+5. PR hiện tại của task/branch codex/<TASK-ID>
+```
+
+Nếu Project files stale so với GitHub:
+
+```text
+GitHub/Git thắng
+```
+
+### Nếu có ACTIVE task
+
+1. đọc task;
+2. đọc PR;
+3. kiểm tra `CHATGPT_REVIEW_READY`;
+4. nếu false: không review final;
+5. nếu true: review complete PR diff + evidence.
+
+### Nếu không có ACTIVE task
+
+1. đọc TASK_INDEX;
+2. đọc CURRENT_STATE;
+3. xác định planned next task;
+4. inspect đúng seam;
+5. tạo task spec + Codex handoff.
+
+## 24. Recommended recovery prompt for any ChatGPT account
+
+```text
+Tiếp tục AI Tutor VN.
+
+GitHub repository là source of truth.
+
+Đọc:
+1. TASK_INDEX.md
+2. 08_CURRENT_STATE.md
+3. 09_DEV_WORKFLOW.md
+4. task ACTIVE nếu có
+5. Pull Request hiện tại của branch codex/<TASK-ID>
+
+Review/continue theo workflow trong repository.
+
+Không dựa vào memory của conversation cũ.
+Không task done hoặc merge nếu implementation chưa đạt acceptance.
+```
+
+## 25. 08_CURRENT_STATE.md policy
+
+Nên ngắn:
+
+```markdown
+# Current State
+
+Latest merged commit:
+`<sha> <message>`
+
+Active task:
+`<ID> — <name>` hoặc `none`
+
+Active branch:
+`codex/<ID>` hoặc `none`
+
+Active PR:
+`#<number>` hoặc `none`
+
+Workflow:
+ChatGPT specifies/reviews
+→ Codex implements/tests on task branch
+→ PR Ready for review
+→ ChatGPT approves closure
+→ task done
+→ merge
+
+GitHub repository is the source of truth.
+```
+
+## 26. TASK_INDEX policy
+
+Lifecycle states:
+
+```text
+BACKLOG
+READY
+ACTIVE
+BLOCKED
+REVIEW
+DONE
+```
+
+Tối đa một implementation task ACTIVE tại một thời điểm, trừ khi được document rõ.
+
+## 27. Documentation artifact policy
+
+Task file nên lưu:
+
+```text
+Goal
+Context
+Micro-task
+Allowed files
+Forbidden scope
+Acceptance checklist
+Validation
+Tests
+Risks
+Codex prompt
+Validation evidence sau review
+```
+
+Sau ChatGPT approval mới `task done`.
+
+## 28. What NOT to do for speed
+
+Không:
+
+- cho Codex đọc/sửa toàn repo nếu không cần;
+- bỏ PR diff review;
+- bỏ focused tests;
+- bỏ full regression gate khi task yêu cầu;
+- push trực tiếp main;
+- merge trước ChatGPT approval;
+- mark DONE trước ChatGPT approval;
+- gom nhiều subsystem vào một task;
+- thêm dependency chỉ để tiện;
+- đổi architecture trong implementation task;
+- dùng live LLM eval thay deterministic tests;
+- bỏ trust boundary vì model có thể xử lý;
+- sửa unrelated files để working tree sạch;
+- tự nhảy task khi task hiện tại chưa đạt acceptance.
+
+## 29. Default workflow after merge
+
+```text
+main updated
+→ task is DONE
+→ update CURRENT_STATE if needed
+→ identify next planned task
+→ inspect smallest seam
+→ create task spec
+→ create Codex handoff
+→ next codex/<TASK-ID> branch
+```
+
+Không reuse branch cũ cho task logic mới.
+
+## 30. Compact protocol summary
+
+```text
+GitHub is memory.
+Git main is accepted truth.
+PR is the Codex → ChatGPT handoff.
+ChatGPT specifies and reviews.
+Codex implements and validates.
+User merges after closure approval.
+```
+
+Default sequence:
+
+```text
+inspect
+→ spec
+→ codex/<TASK-ID>
+→ ACTIVE
+→ implementation
+→ focused tests
+→ full tests
+→ commit branch
+→ push
+→ Draft PR
+→ Ready for review
+→ ChatGPT PR review
+→ APPROVED_FOR_CLOSURE
+→ task DONE
+→ merge
+→ next task
+```
+
+New ChatGPT account:
+
+```text
+connect/read GitHub
+→ TASK_INDEX
+→ CURRENT_STATE
+→ DEV_WORKFLOW
+→ ACTIVE task
+→ active PR
+→ continue
+```
