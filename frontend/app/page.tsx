@@ -52,6 +52,12 @@ type TutorReplyResponse = {
   next_learning_action?: NextLearningAction | null;
 };
 
+type StartAuthoredResponse = {
+  session_id: number;
+  question: NextLearningAction;
+  tutor: TutorTurn;
+};
+
 type TutorReplyIntent = "attempt" | "hint_request";
 
 const TUTOR_STATE_LABELS: Record<TutorState, string> = {
@@ -107,6 +113,7 @@ export default function Home() {
   const [reply, setReply] = useState("");
   const [analysis, setAnalysis] = useState<StartResponse["analysis"] | null>(null);
   const [nextLearningAction, setNextLearningAction] = useState<NextLearningAction | null>(null);
+  const [authoredQuestion, setAuthoredQuestion] = useState<NextLearningAction | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const tutorRequestInFlight = useRef(false);
@@ -222,10 +229,43 @@ export default function Home() {
       setAnalysis(data.analysis);
       setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
       setNextLearningAction(null);
+      setAuthoredQuestion(null);
       setReply("");
       setStatus("Phiên học đã bắt đầu.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không bắt đầu được phiên học");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startAuthoredTutor() {
+    if (!selectedStudent) {
+      setStatus("Hãy tạo/chọn một học sinh trước.");
+      return;
+    }
+    if (!nextLearningAction || busy) return;
+
+    setBusy(true);
+    setStatus("Đang bắt đầu bài được chọn...");
+    try {
+      const data = await api<StartAuthoredResponse>("/tutor/start-authored", {
+        method: "POST",
+        body: JSON.stringify({
+          student_id: selectedStudent,
+          question_id: nextLearningAction.question_id,
+        }),
+      }, token);
+      setSessionId(data.session_id);
+      setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
+      setAuthoredQuestion(data.question);
+      setNextLearningAction(null);
+      setReply("");
+      setAnalysis(null);
+      setImageDataUrl(null);
+      setStatus("Bài học mới đã bắt đầu.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Không bắt đầu được bài được chọn");
     } finally {
       setBusy(false);
     }
@@ -274,6 +314,7 @@ export default function Home() {
     setSessionId(null);
     setMessages([]);
     setNextLearningAction(null);
+    setAuthoredQuestion(null);
   }
 
   return (
@@ -345,6 +386,13 @@ export default function Home() {
               </div>
             ) : (
               <>
+                {authoredQuestion && (
+                  <div className="analysis">
+                    <strong>{authoredQuestion.problem_text}</strong>
+                    <span>Kỹ năng: {authoredQuestion.skill_code}</span>
+                    <span>Độ khó: {authoredQuestion.difficulty}</span>
+                  </div>
+                )}
                 {analysis && (
                   <div className="analysis">
                     <strong>{analysis.normalized_problem}</strong>
@@ -389,6 +437,9 @@ export default function Home() {
                     <p>{nextLearningAction.problem_text}</p>
                     <span>Kỹ năng: {nextLearningAction.skill_code}</span>
                     <span>Độ khó: {nextLearningAction.difficulty}</span>
+                    <button type="button" disabled={busy || !selectedStudent} onClick={() => void startAuthoredTutor()}>
+                      Bắt đầu bài này
+                    </button>
                   </section>
                 )}
                 <form onSubmit={sendReply} className="reply">
@@ -413,6 +464,7 @@ export default function Home() {
                     setReply("");
                     setImageDataUrl(null);
                     setNextLearningAction(null);
+                    setAuthoredQuestion(null);
                   }}>Bài mới</button>
                 </div>
               </>
