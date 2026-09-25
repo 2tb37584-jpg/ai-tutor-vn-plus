@@ -10,6 +10,9 @@ from app.models import User, Student, TutorSession, TutorMessage, Attempt
 from app.schemas.tutor import (
     StartTutorRequest,
     StartTutorResponse,
+    StartAuthoredTutorRequest,
+    StartAuthoredTutorResponse,
+    ProblemAnalysis,
     StudentProblemAnalysis,
     NextLearningAction,
     TutorReplyRequest,
@@ -265,6 +268,57 @@ def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_use
         confidence=analysis.confidence,
     )
     return StartTutorResponse(session_id=session.id, analysis=public_analysis, tutor=tutor_turn)
+
+
+@router.post("/start-authored", response_model=StartAuthoredTutorResponse)
+def start_authored_tutor(
+    payload: StartAuthoredTutorRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    student = owned_student(db, user, payload.student_id)
+    item = get_question(payload.question_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    analysis = ProblemAnalysis(
+        normalized_problem=item.problem_text,
+        subject="math",
+        grade_band="8",
+        skills=[item.skill_code],
+        prerequisites=[],
+        expected_answer=item.expected_answer,
+        verification_notes="",
+        confidence=1.0,
+    )
+    session = TutorSession(
+        student_id=student.id,
+        title=item.problem_text[:220] or "Tutoring session",
+        normalized_problem=item.problem_text,
+        primary_skill=item.skill_code,
+        internal_expected_answer=item.expected_answer,
+        verification_family=item.verification_family,
+        authored_question_id=item.id,
+    )
+    db.add(session)
+    db.flush()
+
+    tutor_turn = ai.first_turn(analysis, student.grade)
+    tutor_turn = _guard_tutor_turn(tutor_turn, item.expected_answer)
+    session.current_state = tutor_turn.state.value
+    db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
+    db.commit()
+
+    return StartAuthoredTutorResponse(
+        session_id=session.id,
+        question=NextLearningAction(
+            question_id=item.id,
+            skill_code=item.skill_code,
+            problem_text=item.problem_text,
+            difficulty=item.difficulty,
+        ),
+        tutor=tutor_turn,
+    )
 
 
 @router.post("/reply", response_model=TutorReplyResponse)

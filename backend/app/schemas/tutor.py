@@ -1,6 +1,6 @@
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TutorState(str, Enum):
@@ -72,6 +72,13 @@ class StartTutorRequest(BaseModel):
     image_data_url: str | None = None
 
 
+class StartAuthoredTutorRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    student_id: int
+    question_id: str = Field(min_length=1, max_length=120)
+
+
 class StartTutorResponse(BaseModel):
     session_id: int
     analysis: StudentProblemAnalysis
@@ -83,6 +90,12 @@ class NextLearningAction(BaseModel):
     skill_code: str
     problem_text: str
     difficulty: int
+
+
+class StartAuthoredTutorResponse(BaseModel):
+    session_id: int
+    question: NextLearningAction
+    tutor: TutorTurn
 
 
 class TutorReplyRequest(BaseModel):
