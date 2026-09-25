@@ -24,7 +24,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M05-04B3B | Tutor Engine | Enforce runtime answer-leakage guard in tutor API | DONE | Yes, small |
 | M05-05 | Tutor Engine | Record student reply latency | DONE | Yes |
 | M05-06 | Tutor Engine | Add deterministic tutor session summary | DONE | Yes |
-| M05-07 | Tutor Engine | Add explicit transfer completion runtime path | BLOCKED | Yes, small |
+| M05-07 | Tutor Engine | Add explicit transfer completion runtime path | DONE | Yes, small |
 | M05-08 | Tutor Engine | Define deterministic transfer completion contract | DONE | Mostly ChatGPT |
 | M05-09 | Tutor Engine | Persist authored transfer item identity | DONE | Yes |
 | M05-10 | Tutor Engine | Add deterministic transfer verification adapter | DONE | Yes |
