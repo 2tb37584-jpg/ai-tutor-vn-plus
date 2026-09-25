@@ -29,6 +29,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M05-09 | Tutor Engine | Persist authored transfer item identity | DONE | Yes |
 | M05-10 | Tutor Engine | Add deterministic transfer verification adapter | DONE | Yes |
 | M05-11 | Tutor Engine | Select and persist deterministic transfer item | DONE | Yes |
+| M05-12 | Tutor Engine | Wire deterministic TRANSFER verification and completion | READY | Yes |
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | DONE | Mostly ChatGPT |
 | M07-02 | Skill Graph | Implement controlled skill registry | DONE | Yes |
 | M07-03 | Skill Graph | Expose curriculum prerequisite graph queries | DONE | Yes |
