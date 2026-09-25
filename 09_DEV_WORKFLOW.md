@@ -18,6 +18,19 @@ Mục tiêu:
 - ưu tiên deterministic tests/evals trước live LLM validation;
 - bảo vệ secrets và dữ liệu học sinh.
 
+## Workflow scope guardrails
+
+- Roadmap link: [08_CURRENT_STATE.md](08_CURRENT_STATE.md).
+- Core-loop impact: mỗi thay đổi phải nêu rõ tác động đến core learning loop; nếu không có tác động trực tiếp thì giữ ở mức nhỏ nhất cần thiết.
+- Why now: task spec phải giải thích vì sao thay đổi cần thực hiện ở thời điểm hiện tại.
+- Why not defer: task spec phải giải thích vì sao không nên trì hoãn thay đổi sang milestone sau.
+- Exit criterion affected: task phải chỉ rõ exit criterion nào bị ảnh hưởng và cách kiểm chứng.
+- Integration-first rule: ưu tiên tích hợp vào seam hiện có trước khi tạo abstraction hoặc subsystem mới.
+- Evidence-before-expansion rule: chỉ mở rộng scope sau khi có evidence từ test, review, hoặc runtime behavior.
+- Documentation proportionality: tài liệu phải tương xứng với rủi ro và phạm vi thay đổi; không tạo ceremony thay cho evidence.
+- Abstraction gate: chỉ thêm abstraction khi có ít nhất hai caller rõ ràng hoặc khi abstraction loại bỏ duplication có rủi ro thực tế.
+- Module-exit gate: không coi module hoàn tất nếu thiếu implementation, focused validation, regression evidence, và reviewable diff.
+
 ## 1. Source of truth hierarchy
 
 Khi có xung đột:
