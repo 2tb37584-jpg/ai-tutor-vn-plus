@@ -40,8 +40,16 @@ type StartResponse = {
   tutor: TutorTurn;
 };
 
+type NextLearningAction = {
+  question_id: string;
+  skill_code: string;
+  problem_text: string;
+  difficulty: number;
+};
+
 type TutorReplyResponse = {
   tutor: TutorTurn;
+  next_learning_action?: NextLearningAction | null;
 };
 
 type TutorReplyIntent = "attempt" | "hint_request";
@@ -98,6 +106,7 @@ export default function Home() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reply, setReply] = useState("");
   const [analysis, setAnalysis] = useState<StartResponse["analysis"] | null>(null);
+  const [nextLearningAction, setNextLearningAction] = useState<NextLearningAction | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const tutorRequestInFlight = useRef(false);
@@ -212,6 +221,7 @@ export default function Home() {
       setSessionId(data.session_id);
       setAnalysis(data.analysis);
       setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
+      setNextLearningAction(null);
       setReply("");
       setStatus("Phiên học đã bắt đầu.");
     } catch (error) {
@@ -242,6 +252,7 @@ export default function Home() {
         ...m,
         { role: "tutor", content: data.tutor.message, turn: data.tutor },
       ]);
+      setNextLearningAction(data.next_learning_action ?? null);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không gửi được câu trả lời");
     } finally {
@@ -262,6 +273,7 @@ export default function Home() {
     setSelectedStudent(null);
     setSessionId(null);
     setMessages([]);
+    setNextLearningAction(null);
   }
 
   return (
@@ -371,6 +383,14 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+                {nextLearningAction && (
+                  <section className="analysis" aria-label="Bài tiếp theo">
+                    <h3>Bài tiếp theo</h3>
+                    <p>{nextLearningAction.problem_text}</p>
+                    <span>Kỹ năng: {nextLearningAction.skill_code}</span>
+                    <span>Độ khó: {nextLearningAction.difficulty}</span>
+                  </section>
+                )}
                 <form onSubmit={sendReply} className="reply">
                   <input disabled={busy} value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Nhập suy nghĩ hoặc bước giải của em..." />
                   <button disabled={busy || !reply.trim()}>Gửi</button>
@@ -392,6 +412,7 @@ export default function Home() {
                     setAnalysis(null);
                     setReply("");
                     setImageDataUrl(null);
+                    setNextLearningAction(null);
                   }}>Bài mới</button>
                 </div>
               </>

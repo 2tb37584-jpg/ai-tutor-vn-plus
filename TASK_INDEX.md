@@ -88,6 +88,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
+| M10-03 | UI | Render post-completion next learning action | DONE | Yes, small |
 
 ## Current recommended sequence
 1. M00-01
