@@ -61,6 +61,7 @@ class TutorSession(Base):
     current_state: Mapped[str] = mapped_column(String(32), nullable=False, default="ask_attempt")
     internal_expected_answer: Mapped[str] = mapped_column(Text, nullable=False, default="")
     verification_family: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    authored_question_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     transfer_question_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

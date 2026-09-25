@@ -32,6 +32,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M05-12 | Tutor Engine | Wire deterministic TRANSFER verification and completion | DONE | Yes |
 | M05-13 | Tutor Engine | Record deterministic transfer mastery evidence | DONE | Yes |
 | M05-14 | Tutor Engine | Define trusted authored-question tutor start contract | DONE | No |
+| M05-15 | Tutor Engine | Persist authored question provenance | DONE | Yes, small |
 | M07-01 | Skill Graph | Define Grade 8 algebra taxonomy | DONE | Mostly ChatGPT |
 | M07-02 | Skill Graph | Implement controlled skill registry | DONE | Yes |
 | M07-03 | Skill Graph | Expose curriculum prerequisite graph queries | DONE | Yes |
