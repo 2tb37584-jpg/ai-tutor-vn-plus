@@ -11,6 +11,7 @@ from app.schemas.tutor import (
     StartTutorRequest,
     StartTutorResponse,
     StudentProblemAnalysis,
+    NextLearningAction,
     TutorReplyRequest,
     TutorReplyIntent,
     TutorReplyResponse,
@@ -30,6 +31,7 @@ from app.services.mastery import (
     VerificationStatus as MasteryVerificationStatus,
     record_mastery_evidence,
 )
+from app.services.next_learning_action import recommend_next_learning_question
 from app.services.question_bank import (
     get_question,
     get_transfer_question_for_skill,
@@ -424,9 +426,27 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
     _persist_transfer_question_id_on_entry(session, current_state, tutor_turn.state)
     session.current_state = tutor_turn.state.value
+    next_learning_action = None
+    if current_state is TutorState.TRANSFER and tutor_turn.state is TutorState.COMPLETE:
+        recommended_question = recommend_next_learning_question(
+            db,
+            student_id=session.student_id,
+            tutor_state=tutor_turn.state,
+            now=received_at,
+        )
+        if recommended_question is not None:
+            next_learning_action = NextLearningAction(
+                question_id=recommended_question.id,
+                skill_code=recommended_question.skill_code,
+                problem_text=recommended_question.problem_text,
+                difficulty=recommended_question.difficulty,
+            )
     db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
     db.commit()
-    return TutorReplyResponse(tutor=tutor_turn)
+    return TutorReplyResponse(
+        tutor=tutor_turn,
+        next_learning_action=next_learning_action,
+    )
 
 
 @router.get(

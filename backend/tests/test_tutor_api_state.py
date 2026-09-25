@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 import app.services.question_recommender as recommender
 from fastapi import HTTPException
@@ -8,12 +10,14 @@ from app.schemas.tutor import (
     ProblemAnalysis,
     StartTutorRequest,
     TutorReplyRequest,
+    TutorReplyResponse,
     TutorState,
     TutorTurn,
 )
 from app.services.mastery import MasteryEvidenceType, MasteryOutcome
 import app.services.question_bank as question_bank
 from app.services.question_bank import get_transfer_question_for_skill
+from app.services.question_bank import QuestionBankItem
 from app.services.verifier import (
     FactorizationVerificationRequest,
     VerificationResult,
@@ -341,6 +345,11 @@ def transfer_reply_context(
         "ai",
         FakeTutorAI([TutorState.COMPLETE], reply_likely_correct=likely_correct),
     )
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda _db, **_kwargs: None,
+    )
     return user, session, db
 
 
@@ -512,3 +521,173 @@ def test_transfer_correct_without_primary_skill_skips_mastery_evidence(
 
     assert response.tutor.state is TutorState.COMPLETE
     assert session.current_state == TutorState.COMPLETE.value
+
+
+def test_completion_recommends_once_after_transfer_mastery_with_safe_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    fixed_now = datetime(2026, 2, 3, 4, 5, 6)
+    order: list[str] = []
+    recommendation_calls: list[dict[str, object]] = []
+    recommended = QuestionBankItem(
+        id="g8alg.linear-equation.001",
+        skill_code="algebra.linear_equation",
+        problem_text="Solve x + 5 = 12.",
+        verification_reference="x+5=12",
+        expected_answer="7",
+        verification_family="linear_equation",
+        difficulty=1,
+    )
+    monkeypatch.setattr(tutor_api, "_utcnow", lambda: fixed_now)
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda _db, _event: order.append("mastery"),
+    )
+
+    def recommend(_db, **kwargs: object) -> QuestionBankItem:
+        order.append("recommend")
+        recommendation_calls.append(kwargs)
+        return recommended
+
+    monkeypatch.setattr(tutor_api, "recommend_next_learning_question", recommend)
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="(x-3)*(x+3)"),
+        user,
+        db,
+    )
+    serialized = TutorReplyResponse.model_validate(response).model_dump(mode="json")
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert session.current_state == TutorState.COMPLETE.value
+    assert order == ["mastery", "recommend"]
+    assert len(recommendation_calls) == 1
+    assert recommendation_calls[0] == {
+        "student_id": session.student_id,
+        "tutor_state": TutorState.COMPLETE,
+        "now": fixed_now,
+    }
+    assert serialized["next_learning_action"] == {
+        "question_id": recommended.id,
+        "skill_code": recommended.skill_code,
+        "problem_text": recommended.problem_text,
+        "difficulty": recommended.difficulty,
+    }
+    assert "expected_answer" not in str(serialized)
+    assert "verification_reference" not in str(serialized)
+    assert "verification_family" not in str(serialized)
+    assert db.commits == 1
+
+
+def test_completion_without_eligible_question_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.CORRECT),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda _db, _event: None,
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda _db, **_kwargs: None,
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="(x-3)*(x+3)"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert response.next_learning_action is None
+    assert session.current_state == TutorState.COMPLETE.value
+
+
+def test_non_completion_does_not_recommend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=True)
+    monkeypatch.setattr(
+        tutor_api,
+        "verify",
+        lambda _request: VerificationResult(VerificationStatus.INCORRECT),
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "record_mastery_evidence",
+        lambda _db, _event: None,
+    )
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda _db, **_kwargs: pytest.fail("non-completion must not recommend"),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="wrong"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.TRANSFER
+    assert response.next_learning_action is None
+    assert session.current_state == TutorState.TRANSFER.value
+
+
+def test_already_complete_does_not_recompute_recommendation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    session.current_state = TutorState.COMPLETE.value
+    session.verification_family = None
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda _db, **_kwargs: pytest.fail("already complete must not recommend again"),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="follow-up"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert response.next_learning_action is None
+    assert session.current_state == TutorState.COMPLETE.value
+
+
+def test_verify_state_completion_does_not_recommend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, session, db = transfer_reply_context(monkeypatch, likely_correct=False)
+    session.current_state = TutorState.VERIFY.value
+    session.verification_family = None
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda _db, **_kwargs: pytest.fail("VERIFY completion must not recommend"),
+    )
+
+    response = tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=session.id, student_message="ordinary reply"),
+        user,
+        db,
+    )
+
+    assert response.tutor.state is TutorState.COMPLETE
+    assert response.next_learning_action is None

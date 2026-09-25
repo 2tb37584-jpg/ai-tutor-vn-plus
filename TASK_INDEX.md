@@ -62,6 +62,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M08-06 | Mastery | Define next-best-question integration contract | DONE | No |
 | M08-07 | Mastery | Add internal next-learning-action recommendation seam | DONE | Yes, small |
 | M08-08 | Mastery | Define post-completion next-learning-action delivery contract | DONE | No |
+| M08-09 | Mastery | Deliver next learning action on tutor completion | DONE | Yes, small |
 | M09-01 | Evals | Build baseline evaluation runner | DONE | Yes |
 | M09-02 | Evals | Add answer-leakage suite | DONE | Yes |
 | M09-03 | Evaluation | Expand Grade 8 algebra eval corpus to 20 cases | DONE | Yes |

@@ -78,6 +78,13 @@ class StartTutorResponse(BaseModel):
     tutor: TutorTurn
 
 
+class NextLearningAction(BaseModel):
+    question_id: str
+    skill_code: str
+    problem_text: str
+    difficulty: int
+
+
 class TutorReplyRequest(BaseModel):
     session_id: int
     student_message: str = Field(min_length=1, max_length=8000)
@@ -86,6 +93,7 @@ class TutorReplyRequest(BaseModel):
 
 class TutorReplyResponse(BaseModel):
     tutor: TutorTurn
+    next_learning_action: NextLearningAction | None = None
 
 
 class TutorSessionSummaryResponse(BaseModel):
