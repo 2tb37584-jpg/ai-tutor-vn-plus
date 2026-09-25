@@ -52,6 +52,12 @@ type TutorReplyResponse = {
   next_learning_action?: NextLearningAction | null;
 };
 
+type StartAuthoredResponse = {
+  session_id: number;
+  question: NextLearningAction;
+  tutor: TutorTurn;
+};
+
 type TutorReplyIntent = "attempt" | "hint_request";
 
 const TUTOR_STATE_LABELS: Record<TutorState, string> = {
@@ -103,10 +109,12 @@ export default function Home() {
   const [problem, setProblem] = useState("2x + 3 = 11. Hãy tìm x.");
   const [imageDataUrl, setImageDataUrl] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<number | null>(null);
+  const [sessionStudentId, setSessionStudentId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reply, setReply] = useState("");
   const [analysis, setAnalysis] = useState<StartResponse["analysis"] | null>(null);
   const [nextLearningAction, setNextLearningAction] = useState<NextLearningAction | null>(null);
+  const [authoredQuestion, setAuthoredQuestion] = useState<NextLearningAction | null>(null);
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const tutorRequestInFlight = useRef(false);
@@ -207,7 +215,8 @@ export default function Home() {
   }
 
   async function startTutor() {
-    if (!selectedStudent) {
+    const studentId = selectedStudent;
+    if (!studentId) {
       setStatus("Hãy tạo/chọn một học sinh trước.");
       return;
     }
@@ -216,16 +225,53 @@ export default function Home() {
     try {
       const data = await api<StartResponse>("/tutor/start", {
         method: "POST",
-        body: JSON.stringify({ student_id: selectedStudent, problem_text: problem, image_data_url: imageDataUrl }),
+        body: JSON.stringify({ student_id: studentId, problem_text: problem, image_data_url: imageDataUrl }),
       }, token);
       setSessionId(data.session_id);
+      setSessionStudentId(studentId);
       setAnalysis(data.analysis);
       setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
       setNextLearningAction(null);
+      setAuthoredQuestion(null);
       setReply("");
       setStatus("Phiên học đã bắt đầu.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Không bắt đầu được phiên học");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startAuthoredTutor() {
+    const recommendation = nextLearningAction;
+    const studentId = sessionStudentId;
+    if (studentId === null) {
+      setStatus("Hãy tạo/chọn một học sinh trước.");
+      return;
+    }
+    if (!recommendation || busy) return;
+
+    setBusy(true);
+    setStatus("Đang bắt đầu bài được chọn...");
+    try {
+      const data = await api<StartAuthoredResponse>("/tutor/start-authored", {
+        method: "POST",
+        body: JSON.stringify({
+          student_id: studentId,
+          question_id: recommendation.question_id,
+        }),
+      }, token);
+      setSessionId(data.session_id);
+      setSessionStudentId(studentId);
+      setMessages([{ role: "tutor", content: data.tutor.message, turn: data.tutor }]);
+      setAuthoredQuestion(data.question);
+      setNextLearningAction(null);
+      setReply("");
+      setAnalysis(null);
+      setImageDataUrl(null);
+      setStatus("Bài học mới đã bắt đầu.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Không bắt đầu được bài được chọn");
     } finally {
       setBusy(false);
     }
@@ -272,8 +318,10 @@ export default function Home() {
     setStudents([]);
     setSelectedStudent(null);
     setSessionId(null);
+    setSessionStudentId(null);
     setMessages([]);
     setNextLearningAction(null);
+    setAuthoredQuestion(null);
   }
 
   return (
@@ -345,6 +393,13 @@ export default function Home() {
               </div>
             ) : (
               <>
+                {authoredQuestion && (
+                  <div className="analysis">
+                    <strong>{authoredQuestion.problem_text}</strong>
+                    <span>Kỹ năng: {authoredQuestion.skill_code}</span>
+                    <span>Độ khó: {authoredQuestion.difficulty}</span>
+                  </div>
+                )}
                 {analysis && (
                   <div className="analysis">
                     <strong>{analysis.normalized_problem}</strong>
@@ -389,6 +444,9 @@ export default function Home() {
                     <p>{nextLearningAction.problem_text}</p>
                     <span>Kỹ năng: {nextLearningAction.skill_code}</span>
                     <span>Độ khó: {nextLearningAction.difficulty}</span>
+                    <button type="button" disabled={busy || sessionStudentId === null} onClick={() => void startAuthoredTutor()}>
+                      Bắt đầu bài này
+                    </button>
                   </section>
                 )}
                 <form onSubmit={sendReply} className="reply">
@@ -408,11 +466,13 @@ export default function Home() {
                   )}
                   <button className="ghost" disabled={busy} onClick={() => {
                     setSessionId(null);
+                    setSessionStudentId(null);
                     setMessages([]);
                     setAnalysis(null);
                     setReply("");
                     setImageDataUrl(null);
                     setNextLearningAction(null);
+                    setAuthoredQuestion(null);
                   }}>Bài mới</button>
                 </div>
               </>
