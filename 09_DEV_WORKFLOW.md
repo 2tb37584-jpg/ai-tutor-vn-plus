@@ -28,8 +28,9 @@ Mục tiêu:
 - Integration-first rule: ưu tiên tích hợp vào seam hiện có trước khi tạo abstraction hoặc subsystem mới.
 - Evidence-before-expansion rule: chỉ mở rộng scope sau khi có evidence từ test, review, hoặc runtime behavior.
 - Documentation proportionality: tài liệu phải tương xứng với rủi ro và phạm vi thay đổi; không tạo ceremony thay cho evidence.
-- Abstraction gate: chỉ thêm abstraction khi có ít nhất hai caller rõ ràng hoặc khi abstraction loại bỏ duplication có rủi ro thực tế.
-- Module-exit gate: không coi module hoàn tất nếu thiếu implementation, focused validation, regression evidence, và reviewable diff.
+- Task eligibility rule: task chỉ nên được thực hiện khi trực tiếp thúc đẩy phase hiện tại của roadmap, đóng integration debt của core loop, sửa regression/blocker đã đo được, đáp ứng acceptance/exit criterion, hoặc được hỗ trợ bởi evidence cụ thể từ eval/product.
+- Abstraction gate: không tạo service, adapter, resolver, interface, hoặc shared abstraction mới trừ khi nó loại bỏ logic trùng lặp thực tế, thực thi invariant quan trọng của product/safety, thiết lập typed boundary cần thiết, hoặc bắt buộc bởi nhiều caller hiện tại.
+- Module-exit gate: trước khi chuyển sang module hoặc feature family mới, phải kiểm tra core-loop module hiện tại còn material integration debt hay không. Component đã có unit test chưa được coi là fully integrated khi roadmap yêu cầu nó tham gia live product flow.
 
 ## 1. Source of truth hierarchy
 
