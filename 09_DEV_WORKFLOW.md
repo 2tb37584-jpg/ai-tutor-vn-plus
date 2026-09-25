@@ -20,7 +20,7 @@ Mục tiêu:
 
 ## Workflow scope guardrails
 
-- Roadmap link: [08_CURRENT_STATE.md](08_CURRENT_STATE.md).
+- Roadmap link: [docs/ROADMAP.md](docs/ROADMAP.md).
 - Core-loop impact: mỗi thay đổi phải nêu rõ tác động đến core learning loop; nếu không có tác động trực tiếp thì giữ ở mức nhỏ nhất cần thiết.
 - Why now: task spec phải giải thích vì sao thay đổi cần thực hiện ở thời điểm hiện tại.
 - Why not defer: task spec phải giải thích vì sao không nên trì hoãn thay đổi sang milestone sau.
@@ -41,12 +41,12 @@ Khi có xung đột:
 2. Pull Request hiện tại của task
 3. TASK_INDEX.md
 4. task file đang ACTIVE
-5. architecture/product-rule documents
-6. 08_CURRENT_STATE.md
-7. conversation history / remembered context
+5. 09_DEV_WORKFLOW.md
+6. architecture/product-rule documents
+7. current-state snapshots or conversation history, only as supplemental context
 ```
 
-Không suy luận trạng thái dự án chỉ từ chat cũ nếu Git/PR/task-control nói khác.
+Không suy luận trạng thái dự án chỉ từ snapshot hoặc chat cũ nếu Git/PR/task-control nói khác.
 
 ## 2. Responsibility split
 
@@ -317,7 +317,7 @@ CHATGPT_REVIEW_READY: false
 
 Read:
 - TASK_INDEX.md
-- 08_CURRENT_STATE.md
+- relevant section of docs/ROADMAP.md
 - 09_DEV_WORKFLOW.md
 - task file above
 - complete PR diff
@@ -791,10 +791,10 @@ Khi user nói `tiếp tục`, `continue`, hoặc `resume project`, ChatGPT nên 
 
 ```text
 1. TASK_INDEX.md
-2. 08_CURRENT_STATE.md
-3. 09_DEV_WORKFLOW.md
-4. task ACTIVE file
-5. PR hiện tại của task/branch codex/<TASK-ID>
+2. 09_DEV_WORKFLOW.md
+3. task ACTIVE file, nếu có
+4. PR hiện tại của task/branch
+5. relevant roadmap/architecture/product docs khi cần
 ```
 
 Nếu Project files stale so với GitHub:
@@ -814,8 +814,8 @@ GitHub/Git thắng
 ### Nếu không có ACTIVE task
 
 1. đọc TASK_INDEX;
-2. đọc CURRENT_STATE;
-3. xác định planned next task;
+2. đọc 09_DEV_WORKFLOW;
+3. xác định planned next task từ roadmap khi cần;
 4. inspect đúng seam;
 5. tạo task spec + Codex handoff.
 
@@ -828,10 +828,10 @@ GitHub repository là source of truth.
 
 Đọc:
 1. TASK_INDEX.md
-2. 08_CURRENT_STATE.md
-3. 09_DEV_WORKFLOW.md
-4. task ACTIVE nếu có
-5. Pull Request hiện tại của branch codex/<TASK-ID>
+2. 09_DEV_WORKFLOW.md
+3. task ACTIVE nếu có
+4. Pull Request hiện tại của branch
+5. relevant roadmap/architecture/product docs nếu cần
 
 Review/continue theo workflow trong repository.
 
@@ -839,9 +839,11 @@ Không dựa vào memory của conversation cũ.
 Không task done hoặc merge nếu implementation chưa đạt acceptance.
 ```
 
-## 25. 08_CURRENT_STATE.md policy
+## 25. Current-state snapshot policy
 
-Nên ngắn:
+Current-state snapshots, bao gồm `chatgpt_project_pack/08_CURRENT_STATE.md`, chỉ là supplemental starter context và không phải authoritative project state. Snapshot nào stale phải nhường cho GitHub/Git, PR, TASK_INDEX, và ACTIVE task file.
+
+Nếu repository có snapshot:
 
 ```markdown
 # Current State
@@ -858,15 +860,8 @@ Active branch:
 Active PR:
 `#<number>` hoặc `none`
 
-Workflow:
-ChatGPT specifies/reviews
-→ Codex implements/tests on task branch
-→ PR Ready for review
-→ ChatGPT approves closure
-→ task done
-→ merge
-
-GitHub repository is the source of truth.
+Supplemental context only.
+GitHub/Git, current PR, TASK_INDEX, and ACTIVE task file are authoritative.
 ```
 
 ## 26. TASK_INDEX policy
@@ -928,7 +923,7 @@ Không:
 ```text
 main updated
 → task is DONE
-→ update CURRENT_STATE if needed
+→ update any supplemental current-state snapshot if needed
 → identify next planned task
 → inspect smallest seam
 → create task spec
@@ -975,7 +970,6 @@ New ChatGPT account:
 ```text
 connect/read GitHub
 → TASK_INDEX
-→ CURRENT_STATE
 → DEV_WORKFLOW
 → ACTIVE task
 → active PR
