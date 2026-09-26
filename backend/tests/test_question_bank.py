@@ -160,6 +160,8 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.factorization.002",
         "g8alg.factorization.003",
         "g8alg.rational-expression-domain.001",
+        "g8alg.rational-expression-domain.002",
+        "g8alg.rational-expression-domain.003",
     ]
 
 
@@ -312,6 +314,46 @@ def test_new_factorization_items_are_authored_and_self_verify(
 
 def test_factorization_reaches_targeted_coverage() -> None:
     assert len(get_questions_for_skill("algebra.factorization")) >= 3
+
+
+@pytest.mark.parametrize(
+    ("question_id", "difficulty"),
+    [
+        ("g8alg.rational-expression-domain.002", 1),
+        ("g8alg.rational-expression-domain.003", 2),
+    ],
+)
+def test_new_rational_expression_domain_items_are_authored_and_self_verify(
+    question_id: str,
+    difficulty: int,
+) -> None:
+    question = get_question(question_id)
+
+    assert question is not None
+    assert question.skill_code == "algebra.rational_expression.domain"
+    assert question.verification_family == "domain_condition"
+    assert question.difficulty == difficulty
+    assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
+
+
+def test_rational_expression_domain_reaches_targeted_coverage() -> None:
+    assert len(get_questions_for_skill("algebra.rational_expression.domain")) >= 3
+
+
+def test_all_assessed_skills_reach_authored_content_floor() -> None:
+    assessed_skills = (
+        "arithmetic.signed_number_operations",
+        "algebra.expression.distributive_property",
+        "algebra.expression.combine_like_terms",
+        "algebra.expression.simplify",
+        "algebra.identity.basic",
+        "algebra.linear_equation",
+        "algebra.equation.equivalent_transform",
+        "algebra.factorization",
+        "algebra.rational_expression.domain",
+    )
+
+    assert all(len(get_questions_for_skill(skill_code)) >= 3 for skill_code in assessed_skills)
 
 
 @pytest.mark.parametrize(
