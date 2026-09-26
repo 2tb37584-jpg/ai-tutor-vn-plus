@@ -91,7 +91,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-19 | Evals | Upgrade verifier eval harness to typed verifier contract | DONE | Yes |
 | M09-20 | Evals | Build supported-domain verifier benchmark and measure Phase 2 exit gate | DONE | Yes |
 | M09-21 | Evals | Define Phase 3 pilot post-test measurement contract | DONE | Mostly ChatGPT |
-| M09-22 | Evals | Add pure paired pilot measurement calculator | ACTIVE | Yes, small |
+| M09-22 | Evals | Add pure paired pilot measurement calculator | DONE | Yes, small |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
