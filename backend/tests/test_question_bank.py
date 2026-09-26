@@ -139,6 +139,8 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.signed-number-operations.003",
         "g8alg.signed-number-operations.004",
         "g8alg.distributive-property.001",
+        "g8alg.distributive-property.002",
+        "g8alg.distributive-property.003",
         "g8alg.combine-like-terms.001",
         "g8alg.expression-simplify.001",
         "g8alg.identity-basic.001",
@@ -180,6 +182,32 @@ def test_skill_query_requires_canonical_skill_and_preserves_order() -> None:
     ]
     assert get_questions_for_skill("unknown.skill") == ()
     assert get_questions_for_skill("linear equation") == ()
+
+
+@pytest.mark.parametrize(
+    ("question_id", "difficulty"),
+    [
+        ("g8alg.distributive-property.002", 1),
+        ("g8alg.distributive-property.003", 2),
+    ],
+)
+def test_new_distributive_property_items_are_authored_and_self_verify(
+    question_id: str,
+    difficulty: int,
+) -> None:
+    question = get_question(question_id)
+
+    assert question is not None
+    assert question.skill_code == "algebra.expression.distributive_property"
+    assert question.verification_family == "expression_equivalence"
+    assert question.difficulty == difficulty
+    assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
+
+
+def test_distributive_property_reaches_targeted_coverage() -> None:
+    assert len(
+        get_questions_for_skill("algebra.expression.distributive_property")
+    ) >= 3
 
 
 @pytest.mark.parametrize(
