@@ -52,6 +52,23 @@ def _validate_snapshots(
     return snapshots_by_skill
 
 
+def _validate_excluded_question_ids(
+    excluded_question_ids: Iterable[str],
+) -> frozenset[str]:
+    if isinstance(excluded_question_ids, (str, bytes)):
+        raise ValueError("excluded question IDs must be an iterable of strings")
+
+    normalized: set[str] = set()
+    try:
+        for question_id in excluded_question_ids:
+            if not isinstance(question_id, str) or question_id == "":
+                raise ValueError("excluded question IDs must be non-empty strings")
+            normalized.add(question_id)
+    except TypeError as exc:
+        raise ValueError("excluded question IDs must be an iterable of strings") from exc
+    return frozenset(normalized)
+
+
 def _is_eligible(
     skill_code: str, snapshots_by_skill: dict[str, MasterySnapshot]
 ) -> bool:
@@ -78,10 +95,16 @@ def recommend_next_question(
     *,
     mastery_snapshots: Iterable[MasterySnapshot],
     now: datetime,
+    excluded_question_ids: Iterable[str] = (),
 ) -> QuestionBankItem:
     """Select the next question using the fixed v1 policy."""
     snapshots_by_skill = _validate_snapshots(mastery_snapshots, now)
-    questions = get_all_questions()
+    excluded_ids = _validate_excluded_question_ids(excluded_question_ids)
+    questions = tuple(
+        question
+        for question in get_all_questions()
+        if question.id not in excluded_ids
+    )
 
     questions_by_skill: dict[str, list[QuestionBankItem]] = {}
     for question in questions:
