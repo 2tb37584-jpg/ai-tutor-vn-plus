@@ -157,6 +157,8 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.equivalent-transform.002",
         "g8alg.equivalent-transform.003",
         "g8alg.factorization.001",
+        "g8alg.factorization.002",
+        "g8alg.factorization.003",
         "g8alg.rational-expression-domain.001",
     ]
 
@@ -286,6 +288,30 @@ def test_new_identity_basic_items_are_authored_and_self_verify(
 
 def test_identity_basic_reaches_targeted_coverage() -> None:
     assert len(get_questions_for_skill("algebra.identity.basic")) >= 3
+
+
+@pytest.mark.parametrize(
+    ("question_id", "difficulty"),
+    [
+        ("g8alg.factorization.002", 1),
+        ("g8alg.factorization.003", 2),
+    ],
+)
+def test_new_factorization_items_are_authored_and_self_verify(
+    question_id: str,
+    difficulty: int,
+) -> None:
+    question = get_question(question_id)
+
+    assert question is not None
+    assert question.skill_code == "algebra.factorization"
+    assert question.verification_family == "factorization"
+    assert question.difficulty == difficulty
+    assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
+
+
+def test_factorization_reaches_targeted_coverage() -> None:
+    assert len(get_questions_for_skill("algebra.factorization")) >= 3
 
 
 @pytest.mark.parametrize(
