@@ -17,6 +17,11 @@ class ScalarResult:
         return self.rows
 
 
+class ExplodingIterable:
+    def __iter__(self):
+        raise AssertionError("exclusions must not be consumed")
+
+
 class FakeDatabase:
     def __init__(
         self,
@@ -91,6 +96,7 @@ def test_non_complete_returns_none_without_query_or_recommendation(
         student_id=7,
         tutor_state=state,
         now=datetime(2026, 1, 1),
+        excluded_question_ids=ExplodingIterable(),
     )
 
     assert result is None
@@ -121,10 +127,10 @@ def test_complete_maps_student_mastery_forwards_now_and_returns_item(
     db = FakeDatabase(rows=rows)
     selected = question()
     fixed_now = datetime(2026, 1, 2, 3, 4, 5)
-    calls: list[tuple[tuple[MasterySnapshot, ...], datetime]] = []
+    calls: list[tuple[tuple[MasterySnapshot, ...], datetime, object]] = []
 
-    def recommend(*, mastery_snapshots, now):
-        calls.append((tuple(mastery_snapshots), now))
+    def recommend(*, mastery_snapshots, now, excluded_question_ids):
+        calls.append((tuple(mastery_snapshots), now, excluded_question_ids))
         return selected
 
     monkeypatch.setattr(next_learning_action, "recommend_next_question", recommend)
@@ -153,8 +159,36 @@ def test_complete_maps_student_mastery_forwards_now_and_returns_item(
                 ),
             ),
             fixed_now,
+            (),
         )
     ]
+
+
+def test_complete_forwards_exact_exclusion_object_and_calls_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = FakeDatabase()
+    excluded = ("pre-1", "post-1")
+    selected = question()
+    calls: list[object] = []
+
+    def recommend(*, mastery_snapshots, now, excluded_question_ids):
+        calls.append(excluded_question_ids)
+        return selected
+
+    monkeypatch.setattr(next_learning_action, "recommend_next_question", recommend)
+
+    result = next_learning_action.recommend_next_learning_question(
+        db,
+        student_id=7,
+        tutor_state=TutorState.COMPLETE,
+        now=datetime(2026, 1, 2),
+        excluded_question_ids=excluded,
+    )
+
+    assert result is selected
+    assert calls == [excluded]
+    assert calls[0] is excluded
 
 
 def test_pending_mastery_is_visible_before_recommendation(
@@ -172,7 +206,9 @@ def test_pending_mastery_is_visible_before_recommendation(
     monkeypatch.setattr(
         next_learning_action,
         "recommend_next_question",
-        lambda *, mastery_snapshots, now: observed.append(tuple(mastery_snapshots))
+        lambda *, mastery_snapshots, now, excluded_question_ids: observed.append(
+            tuple(mastery_snapshots)
+        )
         or question(),
     )
 
@@ -230,4 +266,31 @@ def test_unrelated_value_error_propagates(monkeypatch: pytest.MonkeyPatch) -> No
             student_id=7,
             tutor_state=TutorState.COMPLETE,
             now=datetime(2026, 1, 2),
+        )
+
+
+def test_exclusion_validation_value_error_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = FakeDatabase()
+
+    def raise_exclusion_error(**_kwargs):
+        raise ValueError("excluded question IDs must be non-empty strings")
+
+    monkeypatch.setattr(
+        next_learning_action,
+        "recommend_next_question",
+        raise_exclusion_error,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="excluded question IDs must be non-empty strings",
+    ):
+        next_learning_action.recommend_next_learning_question(
+            db,
+            student_id=7,
+            tutor_state=TutorState.COMPLETE,
+            now=datetime(2026, 1, 2),
+            excluded_question_ids=("",),
         )

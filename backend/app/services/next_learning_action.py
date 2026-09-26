@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +23,7 @@ def recommend_next_learning_question(
     student_id: int,
     tutor_state: TutorState,
     now: datetime,
+    excluded_question_ids: Iterable[str] = (),
 ) -> QuestionBankItem | None:
     """Select a next authored question only after the tutor session completes."""
     if tutor_state is not TutorState.COMPLETE:
@@ -41,7 +43,11 @@ def recommend_next_learning_question(
         for row in mastery_rows
     )
     try:
-        return recommend_next_question(mastery_snapshots=snapshots, now=now)
+        return recommend_next_question(
+            mastery_snapshots=snapshots,
+            now=now,
+            excluded_question_ids=excluded_question_ids,
+        )
     except ValueError as error:
         if str(error) == "no eligible question-bank skills":
             return None
