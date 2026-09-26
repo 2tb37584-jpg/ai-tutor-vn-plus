@@ -144,8 +144,10 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.identity-basic.001",
         "g8alg.linear-equation.001",
         "g8alg.linear-equation.002",
+        "g8alg.linear-equation.003",
         "g8alg.equivalent-transform.001",
         "g8alg.equivalent-transform.002",
+        "g8alg.equivalent-transform.003",
         "g8alg.factorization.001",
         "g8alg.rational-expression-domain.001",
     ]
@@ -178,6 +180,34 @@ def test_skill_query_requires_canonical_skill_and_preserves_order() -> None:
     ]
     assert get_questions_for_skill("unknown.skill") == ()
     assert get_questions_for_skill("linear equation") == ()
+
+
+@pytest.mark.parametrize(
+    ("question_id", "skill_code"),
+    [
+        ("g8alg.linear-equation.003", "algebra.linear_equation"),
+        (
+            "g8alg.equivalent-transform.003",
+            "algebra.equation.equivalent_transform",
+        ),
+    ],
+)
+def test_new_equation_items_are_authored_and_self_verify(
+    question_id: str,
+    skill_code: str,
+) -> None:
+    question = get_question(question_id)
+
+    assert question is not None
+    assert question.skill_code == skill_code
+    assert question.verification_family == "linear_equation"
+    assert question.difficulty == 2
+    assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
+
+
+def test_new_equation_items_raise_targeted_skill_coverage() -> None:
+    assert len(get_questions_for_skill("algebra.linear_equation")) >= 3
+    assert len(get_questions_for_skill("algebra.equation.equivalent_transform")) >= 3
 
 
 def test_duplicate_question_id_is_rejected() -> None:

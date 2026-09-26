@@ -42,6 +42,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M07-04 | Skill Graph | Seed supported-domain question bank v1 | DONE | Yes |
 | M07-05 | Skill Graph | Add authored difficulty levels to question bank v1 | DONE | Yes |
 | M07-06 | Skill Graph | Complete deterministic transfer-item coverage | DONE | Yes, small |
+| M07-07 | Skill Graph | Raise equation skills to pilot-ready authored coverage | DONE | Yes, small |
 | M06-01 | Verifier | Harden one-variable linear equation verifier | DONE | Yes |
 | M06-02 | Verifier | Add expression-equivalence verification | DONE | Yes |
 | M06-03 | Verifier | Define solver adapter contract | DONE | No |
