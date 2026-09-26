@@ -183,6 +183,124 @@ def test_question_tie_uses_question_bank_declaration_order(monkeypatch):
     assert result.id == "first"
 
 
+def test_omitted_and_empty_exclusions_preserve_selection(monkeypatch):
+    questions = [_question("first", "skill", 1), _question("second", "skill", 1)]
+    _configure_policy(monkeypatch, questions)
+
+    omitted = recommend_next_question(mastery_snapshots=(), now=NOW)
+    explicit_empty = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=()
+    )
+
+    assert omitted.id == explicit_empty.id == "first"
+
+
+def test_excluding_preferred_question_selects_best_remaining_question(monkeypatch):
+    questions = [
+        _question("d1", "skill", 1),
+        _question("d2", "skill", 2),
+        _question("d3", "skill", 3),
+    ]
+    _configure_policy(monkeypatch, questions)
+
+    result = recommend_next_question(
+        mastery_snapshots=(_snapshot("skill", 0.60, 1, NOW - timedelta(days=4)),),
+        now=NOW,
+        excluded_question_ids=("d2",),
+    )
+
+    assert result.id == "d1"
+
+
+def test_fully_excluded_preferred_skill_is_removed_before_skill_ranking(monkeypatch):
+    questions = [
+        _question("preferred", "preferred", 1),
+        _question("fallback", "fallback", 1),
+    ]
+    _configure_policy(monkeypatch, questions)
+
+    result = recommend_next_question(
+        mastery_snapshots=(),
+        now=NOW,
+        excluded_question_ids=("preferred",),
+    )
+
+    assert result.id == "fallback"
+
+
+def test_all_questions_excluded_preserves_no_candidate_error(monkeypatch):
+    questions = [_question("first", "first", 1), _question("second", "second", 1)]
+    _configure_policy(monkeypatch, questions)
+
+    with pytest.raises(ValueError, match="^no eligible question-bank skills$"):
+        recommend_next_question(
+            mastery_snapshots=(),
+            now=NOW,
+            excluded_question_ids=("first", "second"),
+        )
+
+
+@pytest.mark.parametrize(
+    "excluded_question_ids",
+    ["question-id", b"question-id", (123,), ("",)],
+    ids=["string", "bytes", "non_string_member", "empty_member"],
+)
+def test_invalid_exclusion_inputs_are_rejected(monkeypatch, excluded_question_ids):
+    _configure_policy(monkeypatch, [_question("question", "skill", 1)])
+
+    with pytest.raises(ValueError):
+        recommend_next_question(
+            mastery_snapshots=(),
+            now=NOW,
+            excluded_question_ids=excluded_question_ids,
+        )
+
+
+def test_duplicate_exclusions_are_idempotent_and_unknown_ids_are_harmless(monkeypatch):
+    questions = [_question("first", "skill", 1), _question("second", "skill", 1)]
+    _configure_policy(monkeypatch, questions)
+
+    single = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=("first",)
+    )
+    duplicate = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=("first", "first")
+    )
+    unknown = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=("unknown-id",)
+    )
+
+    assert single.id == duplicate.id == "second"
+    assert unknown.id == "first"
+
+
+def test_excluded_question_id_is_never_returned(monkeypatch):
+    questions = [_question("first", "skill", 1), _question("second", "skill", 1)]
+    _configure_policy(monkeypatch, questions)
+
+    excluded_ids = frozenset({"first"})
+    result = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=excluded_ids
+    )
+
+    assert result.id not in excluded_ids
+
+
+def test_filtering_preserves_remaining_declaration_order(monkeypatch):
+    questions = [
+        _question("removed", "skill", 1),
+        _question("second", "skill", 1),
+        _question("third", "skill", 1),
+    ]
+    _configure_policy(monkeypatch, questions)
+
+    result = recommend_next_question(
+        mastery_snapshots=(), now=NOW, excluded_question_ids=("removed",)
+    )
+
+    assert result.id == "second"
+
+
 @pytest.mark.parametrize(
     "snapshots",
     [
