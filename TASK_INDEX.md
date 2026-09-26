@@ -46,6 +46,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M07-08 | Skill Graph | Raise distributive-property skill to pilot-ready authored coverage | DONE | Yes, small |
 | M07-09 | Skill Graph | Raise combine-like-terms skill to pilot-ready authored coverage | DONE | Yes, small |
 | M07-10 | Skill Graph | Raise expression-simplify skill to pilot-ready authored coverage | DONE | Yes, small |
+| M07-11 | Skill Graph | Raise basic-identity skill to pilot-ready authored coverage | DONE | Yes, small |
 | M06-01 | Verifier | Harden one-variable linear equation verifier | DONE | Yes |
 | M06-02 | Verifier | Add expression-equivalence verification | DONE | Yes |
 | M06-03 | Verifier | Define solver adapter contract | DONE | No |

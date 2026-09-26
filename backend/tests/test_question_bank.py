@@ -148,6 +148,8 @@ def test_get_all_questions_preserves_declaration_order() -> None:
         "g8alg.expression-simplify.002",
         "g8alg.expression-simplify.003",
         "g8alg.identity-basic.001",
+        "g8alg.identity-basic.002",
+        "g8alg.identity-basic.003",
         "g8alg.linear-equation.001",
         "g8alg.linear-equation.002",
         "g8alg.linear-equation.003",
@@ -260,6 +262,30 @@ def test_new_expression_simplify_items_are_authored_and_self_verify(
 
 def test_expression_simplify_reaches_targeted_coverage() -> None:
     assert len(get_questions_for_skill("algebra.expression.simplify")) >= 3
+
+
+@pytest.mark.parametrize(
+    ("question_id", "difficulty"),
+    [
+        ("g8alg.identity-basic.002", 1),
+        ("g8alg.identity-basic.003", 2),
+    ],
+)
+def test_new_identity_basic_items_are_authored_and_self_verify(
+    question_id: str,
+    difficulty: int,
+) -> None:
+    question = get_question(question_id)
+
+    assert question is not None
+    assert question.skill_code == "algebra.identity.basic"
+    assert question.verification_family == "expression_equivalence"
+    assert question.difficulty == difficulty
+    assert verify(_verification_request(question)).status is VerificationStatus.CORRECT
+
+
+def test_identity_basic_reaches_targeted_coverage() -> None:
+    assert len(get_questions_for_skill("algebra.identity.basic")) >= 3
 
 
 @pytest.mark.parametrize(
