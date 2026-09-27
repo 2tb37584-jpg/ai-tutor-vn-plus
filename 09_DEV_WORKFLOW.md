@@ -169,6 +169,76 @@ ChatGPT
 → chọn task kế tiếp
 ```
 
+### 3.1 Phase/Workstream Delegation
+
+ChatGPT may delegate an entire Phase or coherent workstream only when the architecture is known, the task graph is known, measurable acceptance and exit criteria are defined, the test/eval strategy is defined, and explicit stop conditions are written. A Phase must not become one giant implementation task.
+
+The operating model is:
+
+```text
+Phase
+→ workstreams
+→ reviewable micro-tasks
+→ deterministic gates
+→ review checkpoints
+→ Phase exit review
+```
+
+#### Authority inside a delegated workstream
+
+ChatGPT retains authority over product direction, architecture, decomposition, trust boundaries, phase/workstream contracts, public API and schema decisions, student/minor privacy, evaluation strategy, meaningful checkpoint review, and Phase exit.
+
+Codex may execute inside the approved contract: inspect seams, order the planned micro-tasks, implement scoped changes and tests, run focused and required full deterministic regressions, update task documentation, perform lifecycle transitions when gates are satisfied, and stage, commit, push, or open a PR only when explicitly allowed. Delegation does not authorize a new architecture, trust boundary, public contract, persistence design, dependency, or Phase completion decision. Merge remains a separate explicit repository action under the existing review policy.
+
+#### Autonomous task-transition gate
+
+Codex may move from planned task N to task N+1 without a new relay only when all of the following are true:
+
+- focused tests pass;
+- required regression tests pass;
+- the exact allowed-file scope is preserved;
+- acceptance criteria are met;
+- no new architecture, trust, schema, API, persistence, privacy, or dependency decision is introduced;
+- task N+1 is already part of the approved workstream plan.
+
+Otherwise Codex stops and returns the decision to ChatGPT.
+
+#### Delegated-workstream recovery
+
+When a new conversation or Codex session resumes delegated work, recover from current repository/GitHub truth in this context order:
+
+```text
+current Git branch / commit / working tree
+→ current PR state and CI when a PR exists
+→ TASK_INDEX and task-control state
+→ ACTIVE task
+→ 09_DEV_WORKFLOW
+→ relevant architecture/product docs
+→ CURRENT_STATE or other snapshots only as supplemental context
+→ conversation memory last
+```
+
+Determine the current execution mode (`micro-task` or `Phase/Workstream Delegation`), current workstream, completed checkpoint, and smallest unresolved checkpoint. Continue from that checkpoint; do not restart the workstream or blindly create the next task. Current Git/GitHub/task-control evidence wins over stale snapshots. `CURRENT_STATE` is a recovery aid, not implementation truth. Conversation memory is supporting context only. A new chat must not assume a Phase is complete from previous conversation claims. Phase 3 still requires a real pilot and measurable post-test improvement.
+
+#### Mandatory review checkpoints
+
+ChatGPT review remains mandatory at architecture, public API, schema, database, authentication, privacy, trust-boundary, tutor-state, deterministic-verification, mastery, and new-dependency decisions; at coherent workstream boundaries; and at final Phase exit. A workstream may reduce relay overhead, but it does not remove these gates.
+
+#### Commit and Phase-exit policy
+
+Commits remain task-scoped or coherent-workstream-scoped and must carry their validation gates. There are no giant Phase commits and no unrelated changes. Codex never independently declares a Phase complete. Phase 3 still requires a real pilot and measurable post-test improvement; implementation, unit tests, or infrastructure alone are insufficient.
+
+The shared principle is:
+
+```text
+ChatGPT designs Phase/workstream
+→ Codex executes inside approved boundaries
+→ deterministic gates run
+→ ChatGPT reviews meaningful checkpoints
+→ Codex continues
+→ ChatGPT performs Phase exit review
+```
+
 Nguyên tắc:
 
 ```text
