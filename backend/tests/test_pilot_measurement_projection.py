@@ -110,9 +110,15 @@ def test_empty_or_malformed_public_id_fails_closed(
     db_and_enrollment: tuple[Session, PilotEnrollment], public_id: object
 ) -> None:
     db, enrollment = db_and_enrollment
+    enrollment_id = enrollment.id
     enrollment.public_id = public_id  # type: ignore[assignment]
     with pytest.raises(PilotMeasurementProjectionStateError):
-        project_pilot_assessment_records(db, enrollment_id=enrollment.id)
+        project_pilot_assessment_records(db, enrollment_id=enrollment_id)
+
+    db.rollback()
+    persisted = db.get(PilotEnrollment, enrollment_id)
+    assert persisted is not None
+    assert persisted.public_id == "opaque-pilot-learner-a"
 
 
 def test_pairing_uses_only_opaque_enrollment_public_id(
