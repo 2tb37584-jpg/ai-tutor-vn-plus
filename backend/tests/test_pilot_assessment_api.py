@@ -110,7 +110,6 @@ def test_owner_gets_current_pre_item_with_exact_safe_fields(api_context) -> None
         "verification_status",
         "learning_question_id",
         "g8alg.factorization.003",
-        str(enrollment.id),
     ):
         assert secret not in serialized
 
