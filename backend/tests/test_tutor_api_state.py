@@ -202,9 +202,13 @@ def test_entering_transfer_selects_and_reuses_exact_factorization_item(
     )
     selected_skills: list[str] = []
 
-    def select_once(skill_code: str):
+    def select_once(skill_code: str, *, excluded_question_ids=()):
+        assert excluded_question_ids == ()
         selected_skills.append(skill_code)
-        return get_transfer_question_for_skill(skill_code)
+        return get_transfer_question_for_skill(
+            skill_code,
+            excluded_question_ids=excluded_question_ids,
+        )
 
     monkeypatch.setattr(tutor_api, "get_transfer_question_for_skill", select_once)
 
@@ -573,6 +577,7 @@ def test_completion_recommends_once_after_transfer_mastery_with_safe_projection(
         "student_id": session.student_id,
         "tutor_state": TutorState.COMPLETE,
         "now": fixed_now,
+        "excluded_question_ids": (),
     }
     assert serialized["next_learning_action"] == {
         "question_id": recommended.id,
