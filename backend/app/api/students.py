@@ -191,10 +191,12 @@ def _assessment_error(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Pilot assessment is temporarily unavailable",
         )
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="Pilot enrollment not found",
-    )
+    if isinstance(error, PilotAssessmentNotFound):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pilot enrollment not found",
+        )
+    raise error
 
 
 @router.get(
@@ -212,7 +214,13 @@ def get_pilot_assessment(
         raise HTTPException(status_code=404, detail="Pilot enrollment not found")
     try:
         item = get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
-    except PilotAssessmentError as error:
+    except (
+        PilotAssessmentQuestionMismatch,
+        PilotAssessmentUnavailable,
+        PilotAssessmentStateError,
+        PilotAssessmentConfigurationError,
+        PilotAssessmentNotFound,
+    ) as error:
         raise _assessment_error(db, error) from error
     if item is None:
         raise HTTPException(
@@ -246,6 +254,12 @@ def submit_pilot_assessment(
             now=datetime.now(UTC).replace(tzinfo=None),
         )
         db.commit()
-    except PilotAssessmentError as error:
+    except (
+        PilotAssessmentQuestionMismatch,
+        PilotAssessmentUnavailable,
+        PilotAssessmentStateError,
+        PilotAssessmentConfigurationError,
+        PilotAssessmentNotFound,
+    ) as error:
         raise _assessment_error(db, error) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

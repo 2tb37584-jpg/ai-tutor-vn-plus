@@ -232,15 +232,24 @@ def test_all_normal_outcomes_return_identical_empty_204(api_context, monkeypatch
         assert assignment.pre_submitted_at is None
 
 
-def test_correct_and_incorrect_progress_without_public_feedback(api_context, monkeypatch):
+@pytest.mark.parametrize(
+    "verifier_status",
+    [VerificationStatus.CORRECT, VerificationStatus.INCORRECT],
+)
+def test_correct_and_incorrect_progress_without_public_feedback(
+    api_context,
+    monkeypatch,
+    verifier_status,
+):
     client, db, _, student, _ = api_context
     enrollment = add_enrollment(db, student.id)
-    monkeypatch.setattr(pilot_assessment, "verify", lambda request: VerificationResult(VerificationStatus.CORRECT))
+    monkeypatch.setattr(pilot_assessment, "verify", lambda request: VerificationResult(verifier_status))
     response = client.post(
         f"/api/v1/students/{student.id}/pilot/assessment",
         json={"question_id": "g8alg.factorization.001", "candidate": "candidate"},
     )
     assert response.status_code == 204
+    assert response.content == b""
     db.refresh(enrollment)
     assert enrollment.phase == "intervention"
     assert client.get(f"/api/v1/students/{student.id}/pilot/assessment").status_code == 409
@@ -338,6 +347,26 @@ def test_unexpected_assessment_exception_propagates(api_context, monkeypatch):
         )
 
 
+class SyntheticAssessmentDomainError(pilot_assessment.PilotAssessmentError):
+    pass
+
+
+def test_unknown_assessment_domain_exception_propagates(api_context, monkeypatch):
+    client, db, _, student, _ = api_context
+    add_enrollment(db, student.id)
+    error = SyntheticAssessmentDomainError("synthetic unknown assessment failure")
+    monkeypatch.setattr(
+        students_api,
+        "submit_pilot_assessment_response",
+        lambda _db, **kwargs: (_ for _ in ()).throw(error),
+    )
+    with pytest.raises(SyntheticAssessmentDomainError, match="synthetic unknown"):
+        client.post(
+            f"/api/v1/students/{student.id}/pilot/assessment",
+            json={"question_id": "g8alg.factorization.001", "candidate": "candidate"},
+        )
+
+
 def test_openapi_assessment_contract_is_narrow(api_context):
     client, _, _, _, _ = api_context
     schema = client.get("/openapi.json").json()
@@ -346,5 +375,8 @@ def test_openapi_assessment_contract_is_narrow(api_context):
     assert set(path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].split("/")[-1:]) == {"PilotAssessmentItemOut"}
     post_schema = path["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
     assert post_schema.endswith("PilotAssessmentSubmissionIn")
+    submission_schema = schema["components"]["schemas"]["PilotAssessmentSubmissionIn"]
+    assert set(submission_schema["properties"]) == {"question_id", "candidate"}
+    assert submission_schema["additionalProperties"] is False
     assert "204" in path["post"]["responses"]
     assert "content" not in path["post"]["responses"]["204"]
