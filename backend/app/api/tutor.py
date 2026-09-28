@@ -35,11 +35,19 @@ from app.services.mastery import (
     record_mastery_evidence,
 )
 from app.services.next_learning_action import recommend_next_learning_question
+from app.services.pilot_learning_start import (
+    PilotLearningStartConfigurationError,
+    PilotLearningStartNotFound,
+    PilotLearningStartStateError,
+    PilotLearningStartUnavailable,
+    get_next_pilot_learning_start,
+)
 from app.services.pilot_reserved_questions import (
     PilotReservedQuestionStateError,
     get_active_pilot_reserved_question_ids,
 )
 from app.services.question_bank import (
+    QuestionBankItem,
     get_question,
     get_transfer_question_for_skill,
     verification_request_for_candidate,
@@ -255,6 +263,54 @@ def owned_session(db: Session, user: User, session_id: int) -> TutorSession:
     return session
 
 
+def _start_authored_session(
+    *,
+    db: Session,
+    student: Student,
+    item: QuestionBankItem,
+    pilot_skill_assignment_id: int | None = None,
+) -> StartAuthoredTutorResponse:
+    analysis = ProblemAnalysis(
+        normalized_problem=item.problem_text,
+        subject="math",
+        grade_band="8",
+        skills=[item.skill_code],
+        prerequisites=[],
+        expected_answer=item.expected_answer,
+        verification_notes="",
+        confidence=1.0,
+    )
+    session = TutorSession(
+        student_id=student.id,
+        title=item.problem_text[:220] or "Tutoring session",
+        normalized_problem=item.problem_text,
+        primary_skill=item.skill_code,
+        internal_expected_answer=item.expected_answer,
+        verification_family=item.verification_family,
+        authored_question_id=item.id,
+        pilot_skill_assignment_id=pilot_skill_assignment_id,
+    )
+    db.add(session)
+    db.flush()
+
+    tutor_turn = ai.first_turn(analysis, student.grade)
+    tutor_turn = _guard_tutor_turn(tutor_turn, item.expected_answer)
+    session.current_state = tutor_turn.state.value
+    db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
+    db.commit()
+
+    return StartAuthoredTutorResponse(
+        session_id=session.id,
+        question=NextLearningAction(
+            question_id=item.id,
+            skill_code=item.skill_code,
+            problem_text=item.problem_text,
+            difficulty=item.difficulty,
+        ),
+        tutor=tutor_turn,
+    )
+
+
 @router.post("/start", response_model=StartTutorResponse)
 def start_tutor(payload: StartTutorRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     student = owned_student(db, user, payload.student_id)
@@ -304,43 +360,45 @@ def start_authored_tutor(
     if item is None or item.id in reserved_question_ids:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    analysis = ProblemAnalysis(
-        normalized_problem=item.problem_text,
-        subject="math",
-        grade_band="8",
-        skills=[item.skill_code],
-        prerequisites=[],
-        expected_answer=item.expected_answer,
-        verification_notes="",
-        confidence=1.0,
-    )
-    session = TutorSession(
-        student_id=student.id,
-        title=item.problem_text[:220] or "Tutoring session",
-        normalized_problem=item.problem_text,
-        primary_skill=item.skill_code,
-        internal_expected_answer=item.expected_answer,
-        verification_family=item.verification_family,
-        authored_question_id=item.id,
-    )
-    db.add(session)
-    db.flush()
+    return _start_authored_session(db=db, student=student, item=item)
 
-    tutor_turn = ai.first_turn(analysis, student.grade)
-    tutor_turn = _guard_tutor_turn(tutor_turn, item.expected_answer)
-    session.current_state = tutor_turn.state.value
-    db.add(TutorMessage(session_id=session.id, role="assistant", content=tutor_turn.message))
-    db.commit()
 
-    return StartAuthoredTutorResponse(
-        session_id=session.id,
-        question=NextLearningAction(
-            question_id=item.id,
-            skill_code=item.skill_code,
-            problem_text=item.problem_text,
-            difficulty=item.difficulty,
-        ),
-        tutor=tutor_turn,
+@router.post(
+    "/start-pilot-learning/{student_id}",
+    response_model=StartAuthoredTutorResponse,
+)
+def start_pilot_learning_tutor(
+    student_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    student = owned_student(db, user, student_id)
+    try:
+        trusted_start = get_next_pilot_learning_start(db, student_id=student.id)
+    except PilotLearningStartNotFound as error:
+        raise HTTPException(
+            status_code=404,
+            detail="Pilot enrollment not found",
+        ) from error
+    except PilotLearningStartUnavailable as error:
+        raise HTTPException(
+            status_code=409,
+            detail="Pilot learning is not available in the current phase",
+        ) from error
+    except (
+        PilotLearningStartStateError,
+        PilotLearningStartConfigurationError,
+    ) as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Pilot learning is temporarily unavailable",
+        ) from error
+
+    return _start_authored_session(
+        db=db,
+        student=student,
+        item=trusted_start.item,
+        pilot_skill_assignment_id=trusted_start.pilot_skill_assignment_id,
     )
 
 
