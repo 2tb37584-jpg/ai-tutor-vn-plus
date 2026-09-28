@@ -103,7 +103,7 @@ def upgrade() -> None:
         unique=False,
     )
 
-    with op.batch_alter_table("tutor_sessions", recreate="always") as batch_op:
+    with op.batch_alter_table("tutor_sessions") as batch_op:
         batch_op.add_column(
             sa.Column("pilot_skill_assignment_id", sa.Integer(), nullable=True)
         )
@@ -125,7 +125,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_index(_TUTOR_PROVENANCE_INDEX, table_name="tutor_sessions")
-    with op.batch_alter_table("tutor_sessions", recreate="always") as batch_op:
+    with op.batch_alter_table("tutor_sessions") as batch_op:
         batch_op.drop_constraint(
             "fk_tutor_sessions_pilot_skill_assignment_id",
             type_="foreignkey",

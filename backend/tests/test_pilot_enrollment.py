@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 from pathlib import Path
+import sqlite3
+import subprocess
+import sys
 
 import pytest
 from sqlalchemy import create_engine, inspect, select
@@ -237,7 +241,8 @@ def test_tutor_session_provenance_is_nullable_fk() -> None:
     assert foreign_keys[0].ondelete == "SET NULL"
 
 
-def test_assignment_status_vocabulary_is_enforced(db: Session) -> None:
+@pytest.mark.parametrize("field", ["pre_verification_status", "post_verification_status"])
+def test_assignment_status_vocabulary_is_enforced(db: Session, field: str) -> None:
     enrollment = PilotEnrollment(public_id="public-status", student_id=1, phase="pre")
     db.add(enrollment)
     db.flush()
@@ -248,7 +253,7 @@ def test_assignment_status_vocabulary_is_enforced(db: Session) -> None:
             pre_question_id="pre",
             learning_question_id="learning",
             post_question_id="post",
-            pre_verification_status="not-a-status",
+            **{field: "not-a-status"},
         )
     )
 
@@ -304,3 +309,96 @@ def test_migration_revision_is_correct() -> None:
 
     assert 'revision: str = "0008_pilot_enrollment_state"' in migration_text
     assert 'down_revision: Union[str, Sequence[str], None] = "0007_tutor_authored_question_id"' in migration_text
+
+
+def _run_alembic(tmp_path: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+    backend_dir = Path(__file__).parents[1]
+    database_path = tmp_path / "pilot-enrollment.db"
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = f"sqlite:///{database_path}"
+    return subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "alembic.ini", *arguments],
+        cwd=backend_dir,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
+    upgraded = _run_alembic(tmp_path, "upgrade", "head")
+    assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
+
+    database_path = tmp_path / "pilot-enrollment.db"
+    with sqlite3.connect(database_path) as connection:
+        current = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+        assert current == ("0008_pilot_enrollment_state",)
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert {"pilot_enrollments", "pilot_skill_assignments"} <= tables
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(tutor_sessions)")
+        }
+        assert "pilot_skill_assignment_id" in columns
+
+    downgraded = _run_alembic(tmp_path, "downgrade", "0007_tutor_authored_question_id")
+    assert downgraded.returncode == 0, downgraded.stdout + downgraded.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        assert "pilot_enrollments" not in tables
+        assert "pilot_skill_assignments" not in tables
+        columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(tutor_sessions)")
+        }
+        assert "pilot_skill_assignment_id" not in columns
+
+    reupgraded = _run_alembic(tmp_path, "upgrade", "head")
+    assert reupgraded.returncode == 0, reupgraded.stdout + reupgraded.stderr
+
+    with sqlite3.connect(database_path) as connection:
+        current = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+        assert current == ("0008_pilot_enrollment_state",)
+
+
+def test_alembic_postgresql_offline_sql_compiles(tmp_path: Path) -> None:
+    backend_dir = Path(__file__).parents[1]
+    environment = os.environ.copy()
+    environment["DATABASE_URL"] = (
+        "postgresql+psycopg://synthetic:synthetic@localhost/synthetic"
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            "alembic.ini",
+            "upgrade",
+            "head",
+            "--sql",
+        ],
+        cwd=backend_dir,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "CREATE TABLE pilot_enrollments" in result.stdout
+    assert "CREATE TABLE pilot_skill_assignments" in result.stdout
+    assert "ALTER TABLE tutor_sessions" in result.stdout
+    assert "pilot_skill_assignment_id" in result.stdout
