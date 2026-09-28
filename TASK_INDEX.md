@@ -111,7 +111,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-32 | Evals | Add deterministic pilot assessment domain service | DONE | Yes, small |
 | M09-33 | Evals | Add trusted pilot PRE/POST delivery and submission API | DONE | Yes, small |
 | M09-34A | Evals | Add exclusion support to transfer-question selection | DONE | Yes, small |
-| M09-34B | Evals | Enforce active-pilot reserved-item guards across generic tutor paths | BACKLOG | Yes, small |
+| M09-34B | Evals | Enforce active-pilot reserved-item guards across generic tutor paths | DONE | Yes, small |
 | M09-35 | Evals | Add exact assigned pilot learning-session start | BACKLOG | Yes, small |
 | M09-36 | Evals | Track pilot intervention completion and exact progression | BACKLOG | Yes, small |
 | M09-37 | Evals | Project persisted pilot assessment state into M09-22 records | BACKLOG | Yes, small |

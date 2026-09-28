@@ -40,6 +40,9 @@ class FakeDatabase:
     def commit(self) -> None:
         self.commits += 1
 
+    def scalars(self, _statement: object):
+        return []
+
 
 class FakeTutorAI:
     def __init__(self, first_turn: TutorTurn) -> None:

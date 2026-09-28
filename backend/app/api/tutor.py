@@ -35,6 +35,10 @@ from app.services.mastery import (
     record_mastery_evidence,
 )
 from app.services.next_learning_action import recommend_next_learning_question
+from app.services.pilot_reserved_questions import (
+    PilotReservedQuestionStateError,
+    get_active_pilot_reserved_question_ids,
+)
 from app.services.question_bank import (
     get_question,
     get_transfer_question_for_skill,
@@ -169,17 +173,35 @@ def _transfer_verification_request_for_session(
         return None
 
 
+def _reserved_question_ids_for_student_or_503(
+    db: Session,
+    student_id: int,
+) -> tuple[str, ...]:
+    try:
+        return get_active_pilot_reserved_question_ids(db, student_id=student_id)
+    except PilotReservedQuestionStateError as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Tutor content is temporarily unavailable",
+        ) from error
+
+
 def _persist_transfer_question_id_on_entry(
     session: TutorSession,
     previous_state: TutorState,
     next_state: TutorState,
+    *,
+    excluded_question_ids: tuple[str, ...] = (),
 ) -> None:
     if previous_state is TutorState.TRANSFER or next_state is not TutorState.TRANSFER:
         return
     if session.transfer_question_id is not None or not session.primary_skill:
         return
 
-    item = get_transfer_question_for_skill(session.primary_skill)
+    item = get_transfer_question_for_skill(
+        session.primary_skill,
+        excluded_question_ids=excluded_question_ids,
+    )
     if item is not None:
         session.transfer_question_id = item.id
 
@@ -277,8 +299,9 @@ def start_authored_tutor(
     db: Session = Depends(get_db),
 ):
     student = owned_student(db, user, payload.student_id)
+    reserved_question_ids = _reserved_question_ids_for_student_or_503(db, student.id)
     item = get_question(payload.question_id)
-    if item is None:
+    if item is None or item.id in reserved_question_ids:
         raise HTTPException(status_code=404, detail="Question not found")
 
     analysis = ProblemAnalysis(
@@ -329,6 +352,11 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
         current_state = TutorState(session.current_state)
     except ValueError as error:
         raise HTTPException(status_code=500, detail="Tutor session is unavailable") from error
+
+    reserved_question_ids = _reserved_question_ids_for_student_or_503(
+        db,
+        session.student_id,
+    )
 
     if payload.intent is TutorReplyIntent.HINT_REQUEST:
         try:
@@ -501,7 +529,12 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                         ),
                     )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
-    _persist_transfer_question_id_on_entry(session, current_state, tutor_turn.state)
+    _persist_transfer_question_id_on_entry(
+        session,
+        current_state,
+        tutor_turn.state,
+        excluded_question_ids=reserved_question_ids,
+    )
     session.current_state = tutor_turn.state.value
     next_learning_action = None
     if current_state is TutorState.TRANSFER and tutor_turn.state is TutorState.COMPLETE:
@@ -510,6 +543,7 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
             student_id=session.student_id,
             tutor_state=tutor_turn.state,
             now=received_at,
+            excluded_question_ids=reserved_question_ids,
         )
         if recommended_question is not None:
             next_learning_action = NextLearningAction(
