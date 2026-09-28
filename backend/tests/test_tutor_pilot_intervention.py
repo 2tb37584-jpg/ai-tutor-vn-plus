@@ -67,9 +67,12 @@ def _setup_pilot(
     db: Session,
     *,
     session_index: int = 7,
-    completed_prefix: int = 0,
+    completed_prefix: int | None = None,
     state: TutorState = TutorState.TRANSFER,
 ) -> tuple[User, PilotEnrollment, list[PilotSkillAssignment], TutorSession]:
+    if completed_prefix is None:
+        completed_prefix = session_index
+
     enrollment = PilotEnrollment(
         public_id=f"runtime-pilot-{id(db)}",
         student_id=1,
