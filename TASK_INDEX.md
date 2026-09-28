@@ -105,11 +105,27 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-26 | Evals | Propagate reserved-question exclusions through next-learning-action adapter | DONE | Yes, small |
 | M09-27 | Evals | Add pilot reserved-exclusion orchestration seam | DONE | Yes, small |
 | M09-28 | Evals | Persist Phase/Workstream Delegation workflow | DONE | Mostly ChatGPT |
+| M09-29 | Evals | Persist Phase 3 Remaining Work Contract | DONE | Mostly ChatGPT |
+| M09-30 | Evals | Persist pilot enrollment, frozen assignments, and lifecycle state | BACKLOG | Yes |
+| M09-31 | Evals | Add owner-authorized pilot enrollment/status API | BACKLOG | Yes, small |
+| M09-32 | Evals | Add deterministic pilot assessment domain service | BACKLOG | Yes, small |
+| M09-33 | Evals | Add trusted pilot PRE/POST delivery and submission API | BACKLOG | Yes, small |
+| M09-34A | Evals | Add exclusion support to transfer-question selection | BACKLOG | Yes, small |
+| M09-34B | Evals | Enforce active-pilot reserved-item guards across generic tutor paths | BACKLOG | Yes, small |
+| M09-35 | Evals | Add exact assigned pilot learning-session start | BACKLOG | Yes, small |
+| M09-36 | Evals | Track pilot intervention completion and exact progression | BACKLOG | Yes, small |
+| M09-37 | Evals | Project persisted pilot assessment state into M09-22 records | BACKLOG | Yes, small |
+| M09-38 | Evals | Add aggregate pilot measurement report command | BACKLOG | Yes, small |
+| M09-39 | Evals | Add deterministic end-to-end pilot lifecycle regression | BACKLOG | Yes, small |
+| M09-40 | Evals | Add real-pilot operations/privacy/readiness runbook | BACKLOG | Mostly ChatGPT |
+| M09-41 | Evals | Execute real pilot and retain aggregate measurement evidence | BACKLOG | No |
+| M09-42 | Evals | Evaluate Phase 3 exit criterion from real pilot evidence | BACKLOG | Mostly ChatGPT |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
 | M10-02A | Tutor Engine | Explicit hint request contract | DONE | Yes |
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
 | M10-03 | UI | Render post-completion next learning action | DONE | Yes, small |
 | M10-04 | UI | Start recommended authored question from UI | DONE | Yes, small |
+| M10-05 | UI | Add minimal pilot PRE to learning to POST UI | BACKLOG | Yes, small |
 
 ## Current recommended sequence
 1. M00-01
