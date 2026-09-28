@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from app.services.skill_registry import get_controlled_skills, is_mastery_bearing_skill
 from app.services.verifier import (
@@ -170,13 +170,36 @@ def get_questions_for_skill(skill_code: str) -> tuple[QuestionBankItem, ...]:
     return tuple(item for item in _QUESTION_BANK if item.skill_code == skill_code)
 
 
-def get_transfer_question_for_skill(skill_code: str) -> QuestionBankItem | None:
+def _validate_excluded_question_ids(
+    excluded_question_ids: Iterable[str],
+) -> frozenset[str]:
+    if isinstance(excluded_question_ids, (str, bytes)):
+        raise ValueError("excluded question IDs must be an iterable of strings")
+
+    normalized: set[str] = set()
+    try:
+        for question_id in excluded_question_ids:
+            if not isinstance(question_id, str) or question_id == "":
+                raise ValueError("excluded question IDs must be non-empty strings")
+            normalized.add(question_id)
+    except TypeError as exc:
+        raise ValueError("excluded question IDs must be an iterable of strings") from exc
+    return frozenset(normalized)
+
+
+def get_transfer_question_for_skill(
+    skill_code: str,
+    *,
+    excluded_question_ids: Iterable[str] = (),
+) -> QuestionBankItem | None:
+    excluded_ids = _validate_excluded_question_ids(excluded_question_ids)
     return next(
         (
             item
             for item in get_questions_for_skill(skill_code)
             if is_mastery_bearing_skill(item.skill_code)
             and item.verification_family in _SUPPORTED_FAMILIES
+            and item.id not in excluded_ids
         ),
         None,
     )
