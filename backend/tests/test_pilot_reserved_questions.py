@@ -3,7 +3,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.session import Base
-from app.models import PilotEnrollment, PilotSkillAssignment, Student, User
+from app.models import Student, User
+from app.models.entities import PilotEnrollment, PilotSkillAssignment
 from app.services.pilot_reserved_questions import (
     PilotReservedQuestionStateError,
     get_active_pilot_reserved_question_ids,

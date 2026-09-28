@@ -8,13 +8,12 @@ from sqlalchemy.orm import Session
 from app.api import tutor as tutor_api
 from app.db.session import Base
 from app.models import (
-    PilotEnrollment,
-    PilotSkillAssignment,
     Student,
     TutorMessage,
     TutorSession,
     User,
 )
+from app.models.entities import PilotEnrollment, PilotSkillAssignment
 from app.schemas.tutor import (
     StartAuthoredTutorRequest,
     TutorReplyRequest,
@@ -22,6 +21,7 @@ from app.schemas.tutor import (
     TutorTurn,
 )
 from app.services.pilot_reserved_questions import PilotReservedQuestionStateError
+from app.services.question_bank import get_question
 from app.services.verifier import VerificationResult, VerificationStatus
 
 
@@ -77,19 +77,30 @@ def db() -> Session:
         yield session
 
 
-def add_active_assignments(db: Session, reserved_question_id: str) -> None:
+def add_active_assignments(db: Session) -> None:
     enrollment = PilotEnrollment(public_id="pilot-1", student_id=1, phase="pre")
     db.add(enrollment)
     db.flush()
     for index in range(9):
-        pre_id = reserved_question_id if index == 0 else f"pre.{index}"
+        if index == 0:
+            pre_id, learning_id, post_id = (
+                "g8alg.factorization.001",
+                "g8alg.factorization.002",
+                "g8alg.factorization.003",
+            )
+        else:
+            pre_id, learning_id, post_id = (
+                f"pre.{index}",
+                f"learning.{index}",
+                f"post.{index}",
+            )
         db.add(
             PilotSkillAssignment(
                 pilot_enrollment_id=enrollment.id,
                 skill_code=f"skill.{index}",
                 pre_question_id=pre_id,
-                learning_question_id=f"learning.{index}",
-                post_question_id=f"post.{index}",
+                learning_question_id=learning_id,
+                post_question_id=post_id,
             )
         )
     db.commit()
@@ -108,7 +119,8 @@ def test_authored_start_rejects_each_reserved_role(
     monkeypatch: pytest.MonkeyPatch,
     reserved_id: str,
 ) -> None:
-    add_active_assignments(db, reserved_id)
+    add_active_assignments(db)
+    assert get_question(reserved_id) is not None
     ai = FakeAI(TutorTurn(message="first", state=TutorState.ASK_ATTEMPT))
     monkeypatch.setattr(tutor_api, "ai", ai)
 
@@ -123,6 +135,7 @@ def test_authored_start_rejects_each_reserved_role(
     assert error.value.detail == "Question not found"
     assert ai.calls == 0
     assert db.query(TutorSession).count() == 0
+    assert db.query(TutorMessage).count() == 0
 
 
 def test_completed_pilot_does_not_block_authored_start(
@@ -164,6 +177,28 @@ def test_non_pilot_can_start_authored_item(
     assert response.question.question_id == "g8alg.factorization.001"
     assert db.query(TutorSession).count() == 1
     assert db.query(TutorMessage).count() == 1
+
+
+def test_active_pilot_allows_unreserved_authored_item(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    add_active_assignments(db)
+    question_id = "g8alg.identity-basic.001"
+    assert get_question(question_id) is not None
+    ai = FakeAI(TutorTurn(message="first", state=TutorState.ASK_ATTEMPT))
+    monkeypatch.setattr(tutor_api, "ai", ai)
+
+    response = tutor_api.start_authored_tutor(
+        StartAuthoredTutorRequest(student_id=1, question_id=question_id),
+        user=db.get(User, 1),
+        db=db,
+    )
+
+    assert response.question.question_id == question_id
+    assert db.query(TutorSession).count() == 1
+    assert db.query(TutorMessage).count() == 1
+    assert ai.calls == 1
 
 
 def test_malformed_active_state_maps_to_503_without_side_effects(
@@ -296,6 +331,28 @@ def test_transfer_selection_receives_exclusions_and_preserves_none_result(
     assert received == [reserved]
     assert session.transfer_question_id is None
     assert session.current_state == TutorState.TRANSFER.value
+
+
+def test_transfer_selection_uses_real_selector_to_skip_reserved_item(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db, session, ai = _fake_runtime_context(TutorState.VERIFY)
+    ai.turn = TutorTurn(message="transfer", state=TutorState.TRANSFER)
+    monkeypatch.setattr(tutor_api, "ai", ai)
+    monkeypatch.setattr(
+        tutor_api,
+        "get_active_pilot_reserved_question_ids",
+        lambda *_args, **_kwargs: ("g8alg.factorization.001",),
+    )
+    monkeypatch.setattr(tutor_api, "_verification_request_for_session", lambda *_args: None)
+
+    tutor_api.tutor_reply(
+        TutorReplyRequest(session_id=1, student_message="answer"),
+        user=User(id=1, email="owner@example.com", password_hash="hash"),
+        db=db,
+    )
+
+    assert session.transfer_question_id == "g8alg.factorization.002"
 
 
 def test_non_pilot_transfer_receives_empty_exclusions_and_keeps_existing_selection(
