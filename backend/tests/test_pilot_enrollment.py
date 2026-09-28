@@ -326,11 +326,54 @@ def _run_alembic(tmp_path: Path, *arguments: str) -> subprocess.CompletedProcess
     )
 
 
-def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
-    upgraded = _run_alembic(tmp_path, "upgrade", "head")
+def _prepare_pre_0008_sqlite_fixture(tmp_path: Path) -> Path:
+    upgraded = _run_alembic(tmp_path, "upgrade", "0001_initial_schema")
     assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
 
     database_path = tmp_path / "pilot-enrollment.db"
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(
+            """
+            ALTER TABLE tutor_sessions ADD COLUMN current_state VARCHAR(32) NOT NULL DEFAULT 'ask_attempt';
+            ALTER TABLE tutor_sessions ADD COLUMN internal_expected_answer TEXT NOT NULL DEFAULT '';
+            ALTER TABLE tutor_sessions ADD COLUMN verification_family VARCHAR(32);
+            ALTER TABLE tutor_sessions ADD COLUMN transfer_question_id VARCHAR(120);
+            ALTER TABLE tutor_sessions ADD COLUMN authored_question_id VARCHAR(120);
+            ALTER TABLE tutor_messages ADD COLUMN reply_intent VARCHAR(32);
+            ALTER TABLE tutor_messages ADD COLUMN response_latency_ms INTEGER;
+            INSERT INTO users (email, password_hash, created_at)
+            VALUES ('synthetic@example.com', 'hash', '2026-01-01 00:00:00');
+            INSERT INTO students (
+                id, owner_id, display_name, grade, preferred_language, created_at
+            )
+            VALUES (1, last_insert_rowid(), 'Synthetic', 8, 'vi', '2026-01-01 00:00:00');
+            INSERT INTO tutor_sessions (
+                id, student_id, title, normalized_problem, primary_skill,
+                status, created_at, current_state, internal_expected_answer,
+                verification_family, transfer_question_id, authored_question_id
+            )
+            VALUES (
+                1, 1, 'Synthetic session', 'x + 1', 'algebra.expression.simplify',
+                'active', '2026-01-01 00:00:00', 'ask_attempt', '',
+                'expression_equivalence', NULL, NULL
+            );
+            """
+        )
+
+    stamped = _run_alembic(tmp_path, "stamp", "0007_tutor_authored_question_id")
+    assert stamped.returncode == 0, stamped.stdout + stamped.stderr
+    with sqlite3.connect(database_path) as connection:
+        current = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+        assert current == ("0007_tutor_authored_question_id",)
+    return database_path
+
+
+def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
+    database_path = _prepare_pre_0008_sqlite_fixture(tmp_path)
+
+    upgraded = _run_alembic(tmp_path, "upgrade", "head")
+    assert upgraded.returncode == 0, upgraded.stdout + upgraded.stderr
+
     with sqlite3.connect(database_path) as connection:
         current = connection.execute("SELECT version_num FROM alembic_version").fetchone()
         assert current == ("0008_pilot_enrollment_state",)
@@ -346,6 +389,27 @@ def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(tutor_sessions)")
         }
         assert "pilot_skill_assignment_id" in columns
+        sentinel = connection.execute(
+            """
+            SELECT student_id, normalized_problem, primary_skill,
+                   verification_family, transfer_question_id, authored_question_id
+            FROM tutor_sessions
+            WHERE id = 1
+            """
+        ).fetchone()
+        assert sentinel == (
+            1,
+            "x + 1",
+            "algebra.expression.simplify",
+            "expression_equivalence",
+            None,
+            None,
+        )
+        indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(pilot_enrollments)")
+        }
+        assert "uq_pilot_enrollments_nonterminal_student" in indexes
 
     downgraded = _run_alembic(tmp_path, "downgrade", "0007_tutor_authored_question_id")
     assert downgraded.returncode == 0, downgraded.stdout + downgraded.stderr
@@ -364,6 +428,10 @@ def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
             for row in connection.execute("PRAGMA table_info(tutor_sessions)")
         }
         assert "pilot_skill_assignment_id" not in columns
+        sentinel = connection.execute(
+            "SELECT student_id, normalized_problem, primary_skill FROM tutor_sessions WHERE id = 1"
+        ).fetchone()
+        assert sentinel == (1, "x + 1", "algebra.expression.simplify")
 
     reupgraded = _run_alembic(tmp_path, "upgrade", "head")
     assert reupgraded.returncode == 0, reupgraded.stdout + reupgraded.stderr
@@ -371,6 +439,10 @@ def test_alembic_sqlite_upgrade_downgrade_and_reupgrade(tmp_path: Path) -> None:
     with sqlite3.connect(database_path) as connection:
         current = connection.execute("SELECT version_num FROM alembic_version").fetchone()
         assert current == ("0008_pilot_enrollment_state",)
+        sentinel = connection.execute(
+            "SELECT student_id, normalized_problem, primary_skill FROM tutor_sessions WHERE id = 1"
+        ).fetchone()
+        assert sentinel == (1, "x + 1", "algebra.expression.simplify")
 
 
 def test_alembic_postgresql_offline_sql_compiles(tmp_path: Path) -> None:
@@ -387,7 +459,7 @@ def test_alembic_postgresql_offline_sql_compiles(tmp_path: Path) -> None:
             "-c",
             "alembic.ini",
             "upgrade",
-            "head",
+            "0007_tutor_authored_question_id:0008_pilot_enrollment_state",
             "--sql",
         ],
         cwd=backend_dir,
@@ -402,3 +474,4 @@ def test_alembic_postgresql_offline_sql_compiles(tmp_path: Path) -> None:
     assert "CREATE TABLE pilot_skill_assignments" in result.stdout
     assert "ALTER TABLE tutor_sessions" in result.stdout
     assert "pilot_skill_assignment_id" in result.stdout
+    assert "_alembic_tmp_tutor_sessions" not in result.stdout
