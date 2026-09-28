@@ -78,7 +78,9 @@ def test_pre_item_uses_exact_persisted_pre_role_and_safe_fields(db: Session) -> 
     assert item.question_id == "g8alg.factorization.001"
     assert item.skill_code == "algebra.factorization"
     assert item.problem_text
-    assert item.difficulty == 1
+    question = get_question("g8alg.factorization.001")
+    assert question is not None
+    assert item.difficulty == question.difficulty
     assert set(item.__dataclass_fields__) == {
         "phase", "question_id", "skill_code", "problem_text", "difficulty"
     }
@@ -134,7 +136,7 @@ def test_real_authored_question_and_verifier_are_used(db: Session) -> None:
         db,
         enrollment_id=enrollment.id,
         question_id="g8alg.factorization.001",
-        candidate="(x+2)*(x+3)",
+        candidate="(x-3)*(x+3)",
         now=datetime(2026, 1, 1),
     )
 
@@ -235,6 +237,12 @@ def test_post_uses_exact_post_role_and_final_submission_completes(db: Session) -
 
 def test_complete_enrollment_exposes_no_item(db: Session) -> None:
     enrollment = enrollment_fixture(db, phase="complete")
+    assignment = assignment_for(db, enrollment)
+    assignment.pre_verification_status = "correct"
+    assignment.pre_submitted_at = datetime(2026, 1, 1)
+    assignment.learning_completed_at = datetime(2026, 1, 2)
+    assignment.post_verification_status = "correct"
+    assignment.post_submitted_at = datetime(2026, 1, 3)
     assert pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id) is None
 
 
@@ -271,7 +279,7 @@ def test_submission_has_no_raw_answer_or_side_effect_records_and_no_commit(
         db,
         enrollment_id=enrollment.id,
         question_id="g8alg.factorization.001",
-        candidate="(x+2)*(x+3)",
+        candidate="(x-3)*(x+3)",
         now=datetime(2026, 1, 1),
     )
     assert result.accepted is True
@@ -279,6 +287,115 @@ def test_submission_has_no_raw_answer_or_side_effect_records_and_no_commit(
     assert db.scalars(select(TutorMessage)).all() == []
     assert db.scalars(select(Attempt)).all() == []
     assert db.scalars(select(Mastery)).all() == []
-    assert "(x+2)*(x+3)" not in str(assignment_for(db, enrollment).__dict__)
+    assert "(x-3)*(x+3)" not in str(assignment_for(db, enrollment).__dict__)
     assert not hasattr(pilot_assessment, "assign_pilot_items")
     assert not hasattr(pilot_assessment, "TutorAI")
+
+
+def _complete_pre_and_learning(assignment: PilotSkillAssignment) -> None:
+    assignment.pre_verification_status = "correct"
+    assignment.pre_submitted_at = datetime(2026, 1, 1)
+    assignment.learning_completed_at = datetime(2026, 1, 2)
+
+
+def _two_assignment_enrollment(db: Session, *, phase: str) -> PilotEnrollment:
+    enrollment = enrollment_fixture(db, phase=phase)
+    db.add(
+        PilotSkillAssignment(
+            pilot_enrollment_id=enrollment.id,
+            skill_code="algebra.identity.basic",
+            pre_question_id="g8alg.identity-basic.001",
+            learning_question_id="g8alg.identity-basic.002",
+            post_question_id="g8alg.identity-basic.003",
+        )
+    )
+    db.flush()
+    return enrollment
+
+
+def test_intervention_with_incomplete_pre_fails_closed(db: Session) -> None:
+    enrollment = enrollment_fixture(db, phase="intervention")
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_intervention_with_post_state_fails_closed(db: Session) -> None:
+    enrollment = enrollment_fixture(db, phase="intervention")
+    assignment = assignment_for(db, enrollment)
+    assignment.pre_verification_status = "correct"
+    assignment.pre_submitted_at = datetime(2026, 1, 1)
+    assignment.post_verification_status = "unsupported"
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_pre_with_learning_completion_fails_closed(db: Session) -> None:
+    enrollment = enrollment_fixture(db)
+    assignment = assignment_for(db, enrollment)
+    assignment.learning_completed_at = datetime(2026, 1, 1)
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_pre_with_post_state_fails_closed(db: Session) -> None:
+    enrollment = enrollment_fixture(db)
+    assignment = assignment_for(db, enrollment)
+    assignment.post_verification_status = "correct"
+    assignment.post_submitted_at = datetime(2026, 1, 1)
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_complete_with_incomplete_post_fails_closed(db: Session) -> None:
+    enrollment = enrollment_fixture(db, phase="complete")
+    assignment = assignment_for(db, enrollment)
+    _complete_pre_and_learning(assignment)
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_out_of_order_pre_state_fails_closed(db: Session) -> None:
+    enrollment = _two_assignment_enrollment(db, phase="pre")
+    second = db.scalars(
+        select(PilotSkillAssignment)
+        .where(PilotSkillAssignment.pilot_enrollment_id == enrollment.id)
+        .order_by(PilotSkillAssignment.id)
+    ).all()[1]
+    second.pre_verification_status = "correct"
+    second.pre_submitted_at = datetime(2026, 1, 1)
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_out_of_order_post_state_fails_closed(db: Session) -> None:
+    enrollment = _two_assignment_enrollment(db, phase="post")
+    assignments = db.scalars(
+        select(PilotSkillAssignment)
+        .where(PilotSkillAssignment.pilot_enrollment_id == enrollment.id)
+        .order_by(PilotSkillAssignment.id)
+    ).all()
+    for assignment in assignments:
+        _complete_pre_and_learning(assignment)
+    assignments[1].post_verification_status = "correct"
+    assignments[1].post_submitted_at = datetime(2026, 1, 3)
+    with pytest.raises(pilot_assessment.PilotAssessmentStateError):
+        pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+
+
+def test_current_unsupported_pre_remains_retryable(db: Session) -> None:
+    enrollment = enrollment_fixture(db)
+    assignment = assignment_for(db, enrollment)
+    assignment.pre_verification_status = "unsupported"
+    item = pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+    assert item is not None
+    assert item.question_id == assignment.pre_question_id
+
+
+def test_current_indeterminate_post_remains_retryable(db: Session) -> None:
+    enrollment = enrollment_fixture(db, phase="post")
+    assignment = assignment_for(db, enrollment)
+    _complete_pre_and_learning(assignment)
+    assignment.post_verification_status = "indeterminate"
+    item = pilot_assessment.get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+    assert item is not None
+    assert item.question_id == assignment.post_question_id

@@ -93,31 +93,98 @@ def _validate_assignment_state(
     *,
     phase: str,
 ) -> None:
+    valid_statuses = {None, *(item.value for item in VerificationStatus)}
     for assignment in assignments:
         for role in ("pre", "post"):
             status = getattr(assignment, f"{role}_verification_status")
             submitted_at = getattr(assignment, f"{role}_submitted_at")
+            if status not in valid_statuses:
+                raise PilotAssessmentStateError(
+                    f"{role} verification has an invalid status"
+                )
             if submitted_at is not None and not _status_is_scored(status):
                 raise PilotAssessmentStateError(
                     f"{role} submission has an invalid verification status"
                 )
-        if (
-            phase == "pre"
-            and assignment.pre_verification_status is not None
-            and assignment.pre_submitted_at is None
-            and _status_is_scored(assignment.pre_verification_status)
-        ):
+            if _status_is_scored(status) and submitted_at is None:
+                raise PilotAssessmentStateError(
+                    f"scored {role.upper()} verification is missing its submission timestamp"
+                )
+            if status in {"unsupported", "indeterminate"} and submitted_at is not None:
+                raise PilotAssessmentStateError(
+                    f"{role} retryable verification has a submission timestamp"
+                )
+
+    def validate_prefix(role: str) -> None:
+        saw_incomplete = False
+        for assignment in assignments:
+            status = getattr(assignment, f"{role}_verification_status")
+            submitted_at = getattr(assignment, f"{role}_submitted_at")
+            completed = submitted_at is not None and _status_is_scored(status)
+            retryable = status in {"unsupported", "indeterminate"} and submitted_at is None
+            untouched = status is None and submitted_at is None
+            if completed:
+                if saw_incomplete:
+                    raise PilotAssessmentStateError(
+                        f"{role.upper()} assignments are completed out of order"
+                    )
+            elif retryable or untouched:
+                if saw_incomplete and not untouched:
+                    raise PilotAssessmentStateError(
+                        f"{role.upper()} assignments are completed out of order"
+                    )
+                saw_incomplete = True
+            else:
+                raise PilotAssessmentStateError(
+                    f"{role.upper()} assignment state is invalid"
+                )
+
+    validate_prefix("pre")
+    validate_prefix("post")
+
+    if phase == "pre":
+        if any(assignment.learning_completed_at is not None for assignment in assignments):
             raise PilotAssessmentStateError(
-                "scored PRE verification is missing its submission timestamp"
+                "Learning cannot be complete while enrollment is in PRE"
             )
-        if (
-            phase == "post"
-            and assignment.post_verification_status is not None
-            and assignment.post_submitted_at is None
-            and _status_is_scored(assignment.post_verification_status)
+        if any(
+            assignment.post_verification_status is not None
+            or assignment.post_submitted_at is not None
+            for assignment in assignments
         ):
             raise PilotAssessmentStateError(
-                "scored POST verification is missing its submission timestamp"
+                "POST state is not allowed while enrollment is in PRE"
+            )
+    elif phase == "intervention":
+        if not _pre_complete(assignments):
+            raise PilotAssessmentStateError(
+                "PRE assignments must be complete before intervention"
+            )
+        if any(
+            assignment.post_verification_status is not None
+            or assignment.post_submitted_at is not None
+            for assignment in assignments
+        ):
+            raise PilotAssessmentStateError(
+                "POST state is not allowed during intervention"
+            )
+    elif phase == "post":
+        if not _pre_complete(assignments) or not _learning_complete(assignments):
+            raise PilotAssessmentStateError(
+                "POST assessment prerequisites are incomplete"
+            )
+    elif phase == "complete":
+        if not _pre_complete(assignments) or not _learning_complete(assignments):
+            raise PilotAssessmentStateError(
+                "Completed enrollment has incomplete prerequisites"
+            )
+        if not all(
+            assignment.post_submitted_at is not None
+            and _status_is_scored(assignment.post_verification_status)
+            for assignment in assignments
+        ):
+            raise PilotAssessmentStateError(
+                "Completed enrollment has incomplete POST assignments"
             )
 
 
@@ -161,11 +228,10 @@ def get_current_pilot_assessment_item(
     enrollment = _get_enrollment(db, enrollment_id)
     if enrollment.phase not in _PHASES:
         raise PilotAssessmentStateError("Pilot enrollment has an invalid phase")
-    if enrollment.phase in {"intervention", "complete"}:
-        return None
-
     assignments = _assignments(db, enrollment_id)
     _validate_assignment_state(assignments, phase=enrollment.phase)
+    if enrollment.phase in {"intervention", "complete"}:
+        return None
     if enrollment.phase == "pre":
         incomplete = next(
             (
