@@ -479,8 +479,17 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
             response_latency_ms=response_latency_ms,
         )
     )
+    active_problem = session.normalized_problem
+    if pilot_provenance and current_state is TutorState.TRANSFER:
+        if pilot_context is None or pilot_context.transfer_item is None:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Pilot learning is temporarily unavailable",
+            )
+        active_problem = pilot_context.transfer_item.problem_text
     turn_arguments = {
-        "problem": session.normalized_problem,
+        "problem": active_problem,
         "skill": session.primary_skill,
         "history": history,
         "student_message": payload.student_message,
@@ -608,7 +617,53 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                             is_transfer=False,
                         ),
                     )
-    tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
+    if (
+        pilot_provenance
+        and current_state is not TutorState.TRANSFER
+        and tutor_turn.state is TutorState.TRANSFER
+    ):
+        _persist_transfer_question_id_on_entry(
+            session,
+            current_state,
+            tutor_turn.state,
+            excluded_question_ids=reserved_question_ids,
+        )
+        try:
+            pilot_context = resolve_pilot_intervention_context(db, session)
+        except (PilotInterventionStateError, PilotInterventionConfigurationError) as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Pilot learning is temporarily unavailable",
+            ) from error
+        transfer_item = pilot_context.transfer_item
+        if transfer_item is None:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Pilot learning is temporarily unavailable",
+            )
+        tutor_turn = _guard_tutor_turn(tutor_turn, transfer_item.expected_answer)
+        tutor_turn = tutor_turn.model_copy(
+            update={"message": transfer_item.problem_text, "reveal_final_answer": False}
+        )
+    else:
+        leakage_reference = session.internal_expected_answer
+        if pilot_provenance and current_state is TutorState.TRANSFER:
+            if pilot_context is None or pilot_context.transfer_item is None:
+                db.rollback()
+                raise HTTPException(
+                    status_code=503,
+                    detail="Pilot learning is temporarily unavailable",
+                )
+            leakage_reference = pilot_context.transfer_item.expected_answer
+        tutor_turn = _guard_tutor_turn(tutor_turn, leakage_reference)
+        _persist_transfer_question_id_on_entry(
+            session,
+            current_state,
+            tutor_turn.state,
+            excluded_question_ids=reserved_question_ids,
+        )
     pilot_progression: PilotInterventionProgression | None = None
     if (
         pilot_provenance
@@ -627,12 +682,6 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                 status_code=503,
                 detail="Pilot learning is temporarily unavailable",
             ) from error
-    _persist_transfer_question_id_on_entry(
-        session,
-        current_state,
-        tutor_turn.state,
-        excluded_question_ids=reserved_question_ids,
-    )
     session.current_state = tutor_turn.state.value
     next_learning_action = None
     if current_state is TutorState.TRANSFER and tutor_turn.state is TutorState.COMPLETE:

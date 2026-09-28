@@ -33,15 +33,24 @@ _SPECS = (
 
 
 class FakeAI:
-    def __init__(self, state: TutorState, *, likely_correct: bool = False) -> None:
+    def __init__(
+        self,
+        state: TutorState,
+        *,
+        likely_correct: bool = False,
+        message: str = "Try the next small step.",
+    ) -> None:
         self.state = state
         self.likely_correct = likely_correct
+        self.message = message
         self.calls = 0
+        self.problems: list[str] = []
 
-    def continue_turn(self, *_args, **_kwargs) -> TutorTurn:
+    def continue_turn(self, *_args, **kwargs) -> TutorTurn:
         self.calls += 1
+        self.problems.append(kwargs["problem"])
         return TutorTurn(
-            message="Try the next small step.",
+            message=self.message,
             state=self.state,
             likely_correct=self.likely_correct,
         )
@@ -129,6 +138,22 @@ def _reply(
     )
 
 
+def _set_four_item_signed_number_assignment(
+    assignment: PilotSkillAssignment,
+    session: TutorSession,
+) -> None:
+    assignment.pre_question_id = "g8alg.signed-number-operations.002"
+    assignment.learning_question_id = "g8alg.signed-number-operations.003"
+    assignment.post_question_id = "g8alg.signed-number-operations.004"
+    learning_item = tutor_api.get_question(assignment.learning_question_id)
+    assert learning_item is not None
+    session.authored_question_id = learning_item.id
+    session.normalized_problem = learning_item.problem_text
+    session.primary_skill = assignment.skill_code
+    session.internal_expected_answer = learning_item.expected_answer
+    session.verification_family = learning_item.verification_family
+
+
 def _silence_mastery(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         tutor_api,
@@ -198,6 +223,9 @@ def test_entering_transfer_excludes_pre_post_and_keeps_learning_eligible(
     assert assignment.learning_question_id == "g8alg.factorization.002"
     assert assignment.pre_question_id == "g8alg.factorization.001"
     assert assignment.post_question_id == "g8alg.factorization.003"
+    transfer_item = tutor_api.get_question(assignment.learning_question_id)
+    assert transfer_item is not None
+    assert response.tutor.message == transfer_item.problem_text
 
 
 def test_generic_transfer_entry_keeps_all_active_pilot_exclusions(
@@ -334,6 +362,91 @@ def test_completion_timestamp_is_server_received_at_and_next_action_is_safe(
     assert "verification_family" not in str(action)
 
 
+def test_four_item_signed_number_transfer_presentation_matches_verified_item(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _, assignments, session = _setup_pilot(
+        db,
+        session_index=0,
+        state=TutorState.VERIFY,
+    )
+    assignment = assignments[0]
+    _set_four_item_signed_number_assignment(assignment, session)
+    generated_message = "An unrelated model-generated transfer activity."
+    monkeypatch.setattr(tutor_api, "_utcnow", lambda: _RECEIVED_AT)
+    monkeypatch.setattr(
+        tutor_api,
+        "ai",
+        FakeAI(TutorState.TRANSFER, message=generated_message),
+    )
+
+    response = _reply(db, user, session, "-1.5")
+
+    transfer_item = tutor_api.get_question("g8alg.signed-number-operations.001")
+    assert transfer_item is not None
+    assert session.transfer_question_id == transfer_item.id
+    assert transfer_item.problem_text == "Tính: -7 + 12."
+    assert response.tutor.message == transfer_item.problem_text
+    assert generated_message not in response.tutor.message
+    assert response.tutor.reveal_final_answer is False
+
+
+def test_transfer_continuation_uses_transfer_problem_and_answer_for_leak_guard(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _, assignments, session = _setup_pilot(db, session_index=0)
+    assignment = assignments[0]
+    _set_four_item_signed_number_assignment(assignment, session)
+    transfer_item = tutor_api.get_question("g8alg.signed-number-operations.001")
+    assert transfer_item is not None
+    session.transfer_question_id = transfer_item.id
+    ai = FakeAI(TutorState.TRANSFER, message="Kết quả là 5.")
+    monkeypatch.setattr(tutor_api, "_utcnow", lambda: _RECEIVED_AT)
+    monkeypatch.setattr(tutor_api, "ai", ai)
+
+    response = _reply(db, user, session, "0")
+
+    assert ai.problems == [transfer_item.problem_text]
+    assert assignments[0].learning_question_id == "g8alg.signed-number-operations.003"
+    assert session.internal_expected_answer == "-1.5"
+    assert response.tutor.state is TutorState.TRANSFER
+    assert response.tutor.message == tutor_api._SAFE_TUTOR_FALLBACK
+    assert assignments[0].learning_completed_at is None
+
+
+def test_signed_number_transfer_answer_completes_exact_presented_item(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, _, assignments, session = _setup_pilot(db, session_index=0)
+    assignment = assignments[0]
+    _set_four_item_signed_number_assignment(assignment, session)
+    transfer_item = tutor_api.get_question("g8alg.signed-number-operations.001")
+    assert transfer_item is not None
+    session.transfer_question_id = transfer_item.id
+    ai = FakeAI(TutorState.COMPLETE, likely_correct=False)
+    monkeypatch.setattr(tutor_api, "_utcnow", lambda: _RECEIVED_AT)
+    monkeypatch.setattr(tutor_api, "ai", ai)
+    monkeypatch.setattr(
+        tutor_api,
+        "recommend_next_learning_question",
+        lambda *_args, **_kwargs: pytest.fail("pilot progression must use persisted order"),
+    )
+
+    response = _reply(db, user, session, "5")
+
+    assert ai.problems == [transfer_item.problem_text]
+    assert transfer_item.problem_text == "Tính: -7 + 12."
+    assert session.transfer_question_id == transfer_item.id
+    assert response.tutor.state is TutorState.COMPLETE
+    assert session.current_state == TutorState.COMPLETE.value
+    assert assignments[0].learning_completed_at == _RECEIVED_AT
+    assert response.next_learning_action is not None
+    assert response.next_learning_action.question_id == assignments[1].learning_question_id
+
+
 def test_final_ninth_completion_moves_to_post_without_starting_assessment(
     db: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -397,6 +510,49 @@ def test_duplicate_session_completion_is_idempotent(db: Session, monkeypatch) ->
     assert assignments[8].learning_completed_at is None
     assert response.next_learning_action is not None
     assert response.next_learning_action.question_id == assignments[8].learning_question_id
+
+
+def test_stale_duplicate_after_ninth_completion_fails_before_ai_or_message(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, enrollment, assignments, session_a = _setup_pilot(
+        db,
+        session_index=8,
+        completed_prefix=8,
+    )
+    session_b = TutorSession(
+        student_id=1,
+        current_state=TutorState.TRANSFER.value,
+        primary_skill=assignments[8].skill_code,
+        authored_question_id=assignments[8].learning_question_id,
+        transfer_question_id=assignments[8].learning_question_id,
+        pilot_skill_assignment_id=assignments[8].id,
+        internal_expected_answer="unused",
+    )
+    db.add(session_b)
+    db.commit()
+    ai = FakeAI(TutorState.COMPLETE)
+    monkeypatch.setattr(tutor_api, "_utcnow", lambda: _RECEIVED_AT)
+    monkeypatch.setattr(tutor_api, "ai", ai)
+    _silence_mastery(monkeypatch)
+
+    first_response = _reply(db, user, session_a, "(2*x+1)*(x+3)")
+    completed_at = assignments[8].learning_completed_at
+    messages_after_a = db.scalars(select(TutorMessage)).all()
+    assert first_response.next_learning_action is None
+    assert enrollment.phase == "post"
+    assert completed_at == _RECEIVED_AT
+
+    with pytest.raises(HTTPException) as error:
+        _reply(db, user, session_b, "(2*x+1)*(x+3)")
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Pilot learning is temporarily unavailable"
+    assert ai.calls == 1
+    assert db.scalars(select(TutorMessage)).all() == messages_after_a
+    assert assignments[8].learning_completed_at == completed_at
+    assert enrollment.phase == "post"
 
 
 def test_already_complete_followup_does_not_progress_or_recommend(

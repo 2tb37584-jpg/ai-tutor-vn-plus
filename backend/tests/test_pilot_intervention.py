@@ -74,6 +74,7 @@ def _pilot(
         current_state="transfer",
         primary_skill=assigned.skill_code,
         authored_question_id=assigned.learning_question_id,
+        transfer_question_id=assigned.learning_question_id,
         pilot_skill_assignment_id=assigned.id,
         internal_expected_answer="unused by transfer verifier",
     )
@@ -93,6 +94,63 @@ def test_exact_provenance_resolves_context_and_only_pre_post_exclusions(db: Sess
         rows[0].post_question_id,
     )
     assert rows[0].learning_question_id not in context.transfer_excluded_question_ids
+    assert context.transfer_item is not None
+    assert context.transfer_item.id == rows[0].learning_question_id
+
+
+def test_fourth_same_skill_transfer_item_is_valid(db: Session) -> None:
+    _, rows, session = _pilot(db)
+    session.transfer_question_id = "g8alg.signed-number-operations.004"
+    rows[0].skill_code = "arithmetic.signed_number_operations"
+
+    context = pilot_intervention.resolve_pilot_intervention_context(db, session)
+
+    assert context.transfer_item is not None
+    assert context.transfer_item.id == session.transfer_question_id
+
+
+@pytest.mark.parametrize("role", ["pre_question_id", "post_question_id"])
+def test_assessment_reserved_transfer_item_is_rejected(db: Session, role: str) -> None:
+    _, rows, session = _pilot(db)
+    session.transfer_question_id = getattr(rows[0], role)
+
+    with pytest.raises(pilot_intervention.PilotInterventionStateError):
+        pilot_intervention.resolve_pilot_intervention_context(db, session)
+
+
+@pytest.mark.parametrize(
+    ("transfer_question_id", "error_type"),
+    [
+        (None, pilot_intervention.PilotInterventionStateError),
+        ("missing.authored.item", pilot_intervention.PilotInterventionConfigurationError),
+        ("g8alg.linear-equation.001", pilot_intervention.PilotInterventionStateError),
+    ],
+)
+def test_missing_or_wrong_skill_transfer_item_is_rejected(
+    db: Session,
+    transfer_question_id: str | None,
+    error_type: type[Exception],
+) -> None:
+    _, _, session = _pilot(db)
+    session.transfer_question_id = transfer_question_id
+
+    with pytest.raises(error_type):
+        pilot_intervention.resolve_pilot_intervention_context(db, session)
+
+
+def test_post_phase_rejects_stale_intervention_session(db: Session) -> None:
+    enrollment, rows, session = _pilot(
+        db,
+        phase="post",
+        completed_prefix=9,
+        session_index=8,
+    )
+
+    with pytest.raises(pilot_intervention.PilotInterventionStateError):
+        pilot_intervention.resolve_pilot_intervention_context(db, session)
+
+    assert all(row.learning_completed_at is not None for row in rows)
+    assert enrollment.phase == "post"
 
 
 @pytest.mark.parametrize(

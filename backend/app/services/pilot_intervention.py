@@ -30,6 +30,7 @@ class PilotInterventionConfigurationError(PilotInterventionError):
 class PilotInterventionContext:
     pilot_skill_assignment_id: int
     transfer_excluded_question_ids: tuple[str, ...]
+    transfer_item: QuestionBankItem | None
 
 
 @dataclass(frozen=True)
@@ -95,12 +96,31 @@ def resolve_pilot_intervention_context(
     if assignment.learning_completed_at is None and assignment is not first_incomplete:
         raise PilotInterventionStateError("session assignment is not the next incomplete item")
 
+    transfer_item = None
+    transfer_question_id = session.transfer_question_id
+    if transfer_question_id is None:
+        if session.current_state == "transfer":
+            raise PilotInterventionStateError("pilot transfer question provenance is missing")
+    else:
+        transfer_item = get_question(transfer_question_id)
+        if transfer_item is None:
+            raise PilotInterventionConfigurationError(
+                "persisted pilot transfer question is missing"
+            )
+        if transfer_item.id != transfer_question_id:
+            raise PilotInterventionStateError("pilot transfer question identity mismatch")
+        if transfer_item.skill_code != assignment.skill_code:
+            raise PilotInterventionStateError("pilot transfer question skill mismatch")
+        if transfer_item.id in {assignment.pre_question_id, assignment.post_question_id}:
+            raise PilotInterventionStateError("pilot transfer question uses a reserved assessment item")
+
     return PilotInterventionContext(
         pilot_skill_assignment_id=assignment.id,
         transfer_excluded_question_ids=(
             assignment.pre_question_id,
             assignment.post_question_id,
         ),
+        transfer_item=transfer_item,
     )
 
 
