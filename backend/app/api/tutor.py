@@ -42,6 +42,13 @@ from app.services.pilot_learning_start import (
     PilotLearningStartUnavailable,
     get_next_pilot_learning_start,
 )
+from app.services.pilot_intervention import (
+    PilotInterventionConfigurationError,
+    PilotInterventionProgression,
+    PilotInterventionStateError,
+    complete_pilot_learning_assignment,
+    resolve_pilot_intervention_context,
+)
 from app.services.pilot_reserved_questions import (
     PilotReservedQuestionStateError,
     get_active_pilot_reserved_question_ids,
@@ -411,10 +418,25 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     except ValueError as error:
         raise HTTPException(status_code=500, detail="Tutor session is unavailable") from error
 
-    reserved_question_ids = _reserved_question_ids_for_student_or_503(
-        db,
-        session.student_id,
-    )
+    pilot_provenance = session.pilot_skill_assignment_id is not None
+    pilot_context = None
+    if pilot_provenance and current_state is not TutorState.COMPLETE:
+        try:
+            pilot_context = resolve_pilot_intervention_context(db, session)
+        except (PilotInterventionStateError, PilotInterventionConfigurationError) as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Pilot learning is temporarily unavailable",
+            ) from error
+        reserved_question_ids = pilot_context.transfer_excluded_question_ids
+    elif pilot_provenance and current_state is TutorState.COMPLETE:
+        reserved_question_ids = ()
+    else:
+        reserved_question_ids = _reserved_question_ids_for_student_or_503(
+            db,
+            session.student_id,
+        )
 
     if payload.intent is TutorReplyIntent.HINT_REQUEST:
         try:
@@ -587,6 +609,24 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
                         ),
                     )
     tutor_turn = _guard_tutor_turn(tutor_turn, session.internal_expected_answer)
+    pilot_progression: PilotInterventionProgression | None = None
+    if (
+        pilot_provenance
+        and current_state is TutorState.TRANSFER
+        and tutor_turn.state is TutorState.COMPLETE
+    ):
+        try:
+            pilot_progression = complete_pilot_learning_assignment(
+                db,
+                session,
+                received_at=received_at,
+            )
+        except (PilotInterventionStateError, PilotInterventionConfigurationError) as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=503,
+                detail="Pilot learning is temporarily unavailable",
+            ) from error
     _persist_transfer_question_id_on_entry(
         session,
         current_state,
@@ -596,13 +636,18 @@ def tutor_reply(payload: TutorReplyRequest, user: User = Depends(get_current_use
     session.current_state = tutor_turn.state.value
     next_learning_action = None
     if current_state is TutorState.TRANSFER and tutor_turn.state is TutorState.COMPLETE:
-        recommended_question = recommend_next_learning_question(
-            db,
-            student_id=session.student_id,
-            tutor_state=tutor_turn.state,
-            now=received_at,
-            excluded_question_ids=reserved_question_ids,
-        )
+        if pilot_provenance:
+            recommended_question = (
+                pilot_progression.next_item if pilot_progression is not None else None
+            )
+        else:
+            recommended_question = recommend_next_learning_question(
+                db,
+                student_id=session.student_id,
+                tutor_state=tutor_turn.state,
+                now=received_at,
+                excluded_question_ids=reserved_question_ids,
+            )
         if recommended_question is not None:
             next_learning_action = NextLearningAction(
                 question_id=recommended_question.id,
