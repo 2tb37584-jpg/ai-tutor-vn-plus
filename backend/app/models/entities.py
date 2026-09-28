@@ -1,6 +1,18 @@
 from __future__ import annotations
-from datetime import datetime
-from sqlalchemy import String, Text, ForeignKey, Float, Integer, Boolean, DateTime, UniqueConstraint
+from datetime import UTC, datetime
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.session import Base
 
@@ -50,6 +62,85 @@ class Mastery(Base):
     student: Mapped[Student] = relationship(back_populates="masteries")
 
 
+def _pilot_timestamp() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+class PilotEnrollment(Base):
+    __tablename__ = "pilot_enrollments"
+    __table_args__ = (
+        CheckConstraint(
+            "phase IN ('pre', 'intervention', 'post', 'complete')",
+            name="ck_pilot_enrollments_phase",
+        ),
+        Index(
+            "uq_pilot_enrollments_nonterminal_student",
+            "student_id",
+            unique=True,
+            postgresql_where=text("phase <> 'complete'"),
+            sqlite_where=text("phase <> 'complete'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    public_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, default="pre")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_pilot_timestamp)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=_pilot_timestamp,
+        onupdate=_pilot_timestamp,
+    )
+
+
+class PilotSkillAssignment(Base):
+    __tablename__ = "pilot_skill_assignments"
+    __table_args__ = (
+        UniqueConstraint(
+            "pilot_enrollment_id",
+            "skill_code",
+            name="uq_pilot_skill_assignments_enrollment_skill",
+        ),
+        CheckConstraint(
+            "pre_question_id <> learning_question_id"
+            " AND pre_question_id <> post_question_id"
+            " AND learning_question_id <> post_question_id",
+            name="ck_pilot_skill_assignments_distinct_questions",
+        ),
+        CheckConstraint(
+            "pre_verification_status IS NULL OR pre_verification_status IN "
+            "('correct', 'incorrect', 'unsupported', 'indeterminate')",
+            name="ck_pilot_skill_assignments_pre_status",
+        ),
+        CheckConstraint(
+            "post_verification_status IS NULL OR post_verification_status IN "
+            "('correct', 'incorrect', 'unsupported', 'indeterminate')",
+            name="ck_pilot_skill_assignments_post_status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pilot_enrollment_id: Mapped[int] = mapped_column(
+        ForeignKey("pilot_enrollments.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    skill_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    pre_question_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    learning_question_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    post_question_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    pre_verification_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pre_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    learning_completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    post_verification_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    post_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class TutorSession(Base):
     __tablename__ = "tutor_sessions"
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -63,6 +154,11 @@ class TutorSession(Base):
     verification_family: Mapped[str | None] = mapped_column(String(32), nullable=True)
     authored_question_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     transfer_question_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    pilot_skill_assignment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pilot_skill_assignments.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
