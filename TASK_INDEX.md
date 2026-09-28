@@ -114,7 +114,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-34B | Evals | Enforce active-pilot reserved-item guards across generic tutor paths | DONE | Yes, small |
 | M09-35 | Evals | Add exact assigned pilot learning-session start | DONE | Yes, small |
 | M09-36 | Evals | Track pilot intervention completion and exact progression | DONE | Yes, small |
-| M09-37 | Evals | Project persisted pilot assessment state into M09-22 records | ACTIVE | Yes, small |
+| M09-37 | Evals | Project persisted pilot assessment state into M09-22 records | DONE | Yes, small |
 | M09-38 | Evals | Add aggregate pilot measurement report command | BACKLOG | Yes, small |
 | M09-39 | Evals | Add deterministic end-to-end pilot lifecycle regression | BACKLOG | Yes, small |
 | M09-40 | Evals | Add real-pilot operations/privacy/readiness runbook | BACKLOG | Mostly ChatGPT |
