@@ -93,6 +93,10 @@ def _is_active_pilot_integrity_conflict(error: IntegrityError) -> bool:
     )
 
 
+def _is_active_pilot_service_conflict(error: ValueError) -> bool:
+    return str(error) == "student already has a non-terminal pilot enrollment"
+
+
 @router.post(
     "/{student_id}/pilot",
     response_model=PilotStatusOut,
@@ -110,6 +114,8 @@ def create_pilot_status(
         db.refresh(enrollment)
     except ValueError as error:
         db.rollback()
+        if not _is_active_pilot_service_conflict(error):
+            raise
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Student already has an active pilot enrollment",

@@ -128,6 +128,14 @@ def test_missing_or_non_owned_student_is_not_enumerated(api_context, student_id:
     assert response.json()["detail"] == "Student not found"
 
 
+@pytest.mark.parametrize("student_id", [999, 2])
+def test_get_missing_or_non_owned_student_is_not_enumerated(api_context, student_id: int) -> None:
+    client, _, _, _, _ = api_context
+    response = client.get(f"/api/v1/students/{student_id}/pilot")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Student not found"
+
+
 def test_no_enrollment_returns_404(api_context) -> None:
     client, _, _, student, _ = api_context
     response = client.get(f"/api/v1/students/{student.id}/pilot")
@@ -141,6 +149,21 @@ def test_duplicate_active_enrollment_returns_409(api_context) -> None:
     response = client.post(f"/api/v1/students/{student.id}/pilot")
     assert response.status_code == 409
     assert response.json()["detail"] == "Student already has an active pilot enrollment"
+
+
+def test_unrelated_service_value_error_is_not_mapped_to_409(
+    api_context,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _, _, student, _ = api_context
+    error = ValueError("synthetic assignment failure")
+    monkeypatch.setattr(
+        students_api,
+        "create_pilot_enrollment",
+        lambda *args, **kwargs: (_ for _ in ()).throw(error),
+    )
+    with pytest.raises(ValueError, match="synthetic assignment failure"):
+        client.post(f"/api/v1/students/{student.id}/pilot")
 
 
 def test_completed_enrollment_allows_new_enrollment(api_context) -> None:
