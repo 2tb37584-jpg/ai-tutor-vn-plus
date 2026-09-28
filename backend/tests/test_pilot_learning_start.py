@@ -117,6 +117,27 @@ def _add_enrollment(
     return enrollment, rows
 
 
+def assignment_snapshot(
+    assignments: list[PilotSkillAssignment],
+) -> list[tuple[object, ...]]:
+    return [
+        (
+            row.id,
+            row.pilot_enrollment_id,
+            row.skill_code,
+            row.pre_question_id,
+            row.learning_question_id,
+            row.post_question_id,
+            row.pre_verification_status,
+            row.pre_submitted_at,
+            row.learning_completed_at,
+            row.post_verification_status,
+            row.post_submitted_at,
+        )
+        for row in assignments
+    ]
+
+
 @pytest.mark.parametrize("completed_only", [False, True])
 def test_missing_active_enrollment_is_not_found(
     db: Session,
@@ -257,14 +278,15 @@ def test_selection_does_not_flush_commit_or_mutate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     enrollment, assignments = _add_enrollment(db, completed_prefix=2)
-    before = [dict(row.__dict__) for row in assignments]
+    before_phase = enrollment.phase
+    before_assignments = assignment_snapshot(assignments)
     monkeypatch.setattr(db, "flush", lambda: pytest.fail("selection must not flush"))
     monkeypatch.setattr(db, "commit", lambda: pytest.fail("selection must not commit"))
 
     pilot_learning_start.get_next_pilot_learning_start(db, student_id=1)
 
-    assert enrollment.phase == "intervention"
-    assert [dict(row.__dict__) for row in assignments] == before
+    assert enrollment.phase == before_phase
+    assert assignment_snapshot(assignments) == before_assignments
 
 
 def test_selection_has_no_assignment_seed_or_recomputation_dependency() -> None:
