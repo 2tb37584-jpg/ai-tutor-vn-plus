@@ -107,7 +107,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-28 | Evals | Persist Phase/Workstream Delegation workflow | DONE | Mostly ChatGPT |
 | M09-29 | Evals | Persist Phase 3 Remaining Work Contract | DONE | Mostly ChatGPT |
 | M09-30 | Evals | Persist pilot enrollment, frozen assignments, and lifecycle state | DONE | Yes |
-| M09-31 | Evals | Add owner-authorized pilot enrollment/status API | BACKLOG | Yes, small |
+| M09-31 | Evals | Add owner-authorized pilot enrollment/status API | DONE | Yes, small |
 | M09-32 | Evals | Add deterministic pilot assessment domain service | BACKLOG | Yes, small |
 | M09-33 | Evals | Add trusted pilot PRE/POST delivery and submission API | BACKLOG | Yes, small |
 | M09-34A | Evals | Add exclusion support to transfer-question selection | BACKLOG | Yes, small |
