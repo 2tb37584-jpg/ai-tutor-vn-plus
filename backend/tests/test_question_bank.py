@@ -11,6 +11,7 @@ from app.services.question_bank import (
     get_all_questions,
     get_question,
     get_questions_for_skill,
+    get_transfer_question_for_skill,
 )
 from app.services.skill_registry import (
     get_controlled_skills,
@@ -192,6 +193,125 @@ def test_skill_query_requires_canonical_skill_and_preserves_order() -> None:
     ]
     assert get_questions_for_skill("unknown.skill") == ()
     assert get_questions_for_skill("linear equation") == ()
+
+
+def test_transfer_selector_default_and_empty_exclusions_preserve_first_item() -> None:
+    expected = get_question("g8alg.factorization.001")
+
+    assert get_transfer_question_for_skill("algebra.factorization") is expected
+    assert (
+        get_transfer_question_for_skill(
+            "algebra.factorization",
+            excluded_question_ids=(),
+        )
+        is expected
+    )
+
+
+def test_transfer_selector_excludes_leading_items_in_bank_order() -> None:
+    assert get_transfer_question_for_skill(
+        "algebra.factorization",
+        excluded_question_ids={"g8alg.factorization.001"},
+    ).id == "g8alg.factorization.002"
+    assert get_transfer_question_for_skill(
+        "algebra.factorization",
+        excluded_question_ids=(
+            "g8alg.factorization.001",
+            "g8alg.factorization.002",
+        ),
+    ).id == "g8alg.factorization.003"
+
+
+def test_transfer_selector_excluding_all_eligible_items_returns_none() -> None:
+    assert (
+        get_transfer_question_for_skill(
+            "algebra.factorization",
+            excluded_question_ids=(
+                "g8alg.factorization.001",
+                "g8alg.factorization.002",
+                "g8alg.factorization.003",
+            ),
+        )
+        is None
+    )
+
+
+def test_transfer_selector_ignores_unknown_other_skill_and_duplicate_exclusions() -> None:
+    assert get_transfer_question_for_skill(
+        "algebra.factorization",
+        excluded_question_ids=(
+            "unknown.question",
+            "g8alg.linear-equation.001",
+            "g8alg.linear-equation.001",
+        ),
+    ).id == "g8alg.factorization.001"
+
+
+def test_transfer_selector_accepts_one_shot_iterable_without_mutating_caller() -> None:
+    exclusions = ["g8alg.factorization.001"]
+    exclusion_generator = (question_id for question_id in exclusions)
+
+    assert get_transfer_question_for_skill(
+        "algebra.factorization",
+        excluded_question_ids=exclusion_generator,
+    ).id == "g8alg.factorization.002"
+    assert exclusions == ["g8alg.factorization.001"]
+
+
+@pytest.mark.parametrize(
+    "excluded_question_ids",
+    ["g8alg.factorization.001", b"g8alg.factorization.001", 123],
+)
+def test_transfer_selector_rejects_invalid_exclusion_iterables(
+    excluded_question_ids,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="excluded question IDs must be an iterable of strings",
+    ):
+        get_transfer_question_for_skill(
+            "algebra.factorization",
+            excluded_question_ids=excluded_question_ids,
+        )
+
+
+@pytest.mark.parametrize("excluded_question_id", ["", None, 123])
+def test_transfer_selector_rejects_invalid_exclusion_members(
+    excluded_question_id,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match="excluded question IDs must be non-empty strings",
+    ):
+        get_transfer_question_for_skill(
+            "algebra.factorization",
+            excluded_question_ids=[excluded_question_id],
+        )
+
+
+def test_transfer_selector_unknown_skill_returns_none() -> None:
+    assert get_transfer_question_for_skill("unknown.skill") is None
+
+
+def test_transfer_selector_does_not_make_ineligible_item_eligible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ineligible = replace(
+        get_question("g8alg.factorization.001"),
+        skill_code="general.non_mastery_numeric",
+    )
+    monkeypatch.setattr(
+        question_bank,
+        "get_questions_for_skill",
+        lambda _skill_code: (ineligible,),
+    )
+    monkeypatch.setattr(
+        question_bank,
+        "is_mastery_bearing_skill",
+        lambda _skill_code: False,
+    )
+
+    assert get_transfer_question_for_skill("general.non_mastery_numeric") is None
 
 
 @pytest.mark.parametrize(
