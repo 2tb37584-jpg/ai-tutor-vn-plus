@@ -2,11 +2,14 @@ from datetime import datetime
 
 import pytest
 from fastapi import HTTPException
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
-from app.api import tutor as tutor_api
+from app.api import deps, tutor as tutor_api
 from app.db.session import Base
+from app.main import app
 from app.models import Student, TutorMessage, TutorSession, User
 from app.models.entities import PilotEnrollment, PilotSkillAssignment
 from app.schemas.tutor import (
@@ -52,7 +55,11 @@ class FakeAI:
 
 @pytest.fixture
 def db() -> Session:
-    engine = create_engine("sqlite:///:memory:")
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         owner = User(id=1, email="owner@example.com", password_hash="hash")
@@ -267,11 +274,38 @@ def test_server_selected_question_cannot_be_overridden_by_request_body(
         for route in tutor_api.router.routes
         if route.path == "/tutor/start-pilot-learning/{student_id}"
     )
-    response = _start(db)
-
     assert route.dependant.body_params == []
-    assert response.question.question_id == assignments[0].learning_question_id
-    assert response.question.question_id != assignments[1].learning_question_id
+
+    owner = db.get(User, 1)
+    assert owner is not None
+    app.dependency_overrides[deps.get_db] = lambda: db
+    app.dependency_overrides[deps.get_current_user] = lambda: owner
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/tutor/start-pilot-learning/1",
+                json={
+                    "question_id": assignments[1].learning_question_id,
+                    "pilot_skill_assignment_id": assignments[1].id,
+                    "skill_code": assignments[1].skill_code,
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["question"]["question_id"] == assignments[0].learning_question_id
+    assert body["question"]["question_id"] != assignments[1].learning_question_id
+
+    session = db.get(TutorSession, body["session_id"])
+    assert session is not None
+    assert session.authored_question_id == assignments[0].learning_question_id
+    assert session.pilot_skill_assignment_id == assignments[0].id
+    assert session.primary_skill == assignments[0].skill_code
+    assert session.authored_question_id != assignments[1].learning_question_id
+    assert session.pilot_skill_assignment_id != assignments[1].id
+    assert session.primary_skill != assignments[1].skill_code
 
 
 @pytest.mark.parametrize("failure", ["state", "configuration"])
