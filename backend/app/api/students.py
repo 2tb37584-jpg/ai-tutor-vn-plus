@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -7,8 +9,22 @@ from app.db.session import get_db
 from app.models import User, Student, Mastery
 from app.models.entities import PilotEnrollment, PilotSkillAssignment
 from app.schemas.student import StudentCreate, StudentOut, MasteryOut
-from app.schemas.pilot import PilotStatusOut
+from app.schemas.pilot import (
+    PilotAssessmentItemOut,
+    PilotAssessmentSubmissionIn,
+    PilotStatusOut,
+)
 from app.services.pilot_enrollment import create_pilot_enrollment
+from app.services.pilot_assessment import (
+    PilotAssessmentError,
+    PilotAssessmentConfigurationError,
+    PilotAssessmentNotFound,
+    PilotAssessmentQuestionMismatch,
+    PilotAssessmentStateError,
+    PilotAssessmentUnavailable,
+    get_current_pilot_assessment_item,
+    submit_pilot_assessment_response,
+)
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -60,6 +76,17 @@ def _current_or_latest_pilot(db: Session, *, student_id: int) -> PilotEnrollment
             PilotEnrollment.phase == "complete",
         )
         .order_by(PilotEnrollment.created_at.desc(), PilotEnrollment.id.desc())
+    )
+
+
+def _active_pilot(db: Session, *, student_id: int) -> PilotEnrollment | None:
+    return db.scalar(
+        select(PilotEnrollment)
+        .where(
+            PilotEnrollment.student_id == student_id,
+            PilotEnrollment.phase != "complete",
+        )
+        .order_by(PilotEnrollment.id.desc())
     )
 
 
@@ -142,3 +169,97 @@ def get_pilot_status(
     if enrollment is None:
         raise HTTPException(status_code=404, detail="Pilot enrollment not found")
     return _pilot_status(db, enrollment)
+
+
+def _assessment_error(
+    db: Session,
+    error: PilotAssessmentError,
+) -> HTTPException:
+    db.rollback()
+    if isinstance(error, PilotAssessmentQuestionMismatch):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Assessment question is not current",
+        )
+    if isinstance(error, PilotAssessmentUnavailable):
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pilot assessment is not available in the current phase",
+        )
+    if isinstance(error, (PilotAssessmentStateError, PilotAssessmentConfigurationError)):
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Pilot assessment is temporarily unavailable",
+        )
+    if isinstance(error, PilotAssessmentNotFound):
+        return HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pilot enrollment not found",
+        )
+    raise error
+
+
+@router.get(
+    "/{student_id}/pilot/assessment",
+    response_model=PilotAssessmentItemOut,
+)
+def get_pilot_assessment(
+    student_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PilotAssessmentItemOut:
+    student = _owned_student(db, student_id=student_id, user=user)
+    enrollment = _active_pilot(db, student_id=student.id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Pilot enrollment not found")
+    try:
+        item = get_current_pilot_assessment_item(db, enrollment_id=enrollment.id)
+    except (
+        PilotAssessmentQuestionMismatch,
+        PilotAssessmentUnavailable,
+        PilotAssessmentStateError,
+        PilotAssessmentConfigurationError,
+        PilotAssessmentNotFound,
+    ) as error:
+        raise _assessment_error(db, error) from error
+    if item is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Pilot assessment is not available in the current phase",
+        )
+    return PilotAssessmentItemOut(**item.__dict__)
+
+
+@router.post(
+    "/{student_id}/pilot/assessment",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def submit_pilot_assessment(
+    student_id: int,
+    payload: PilotAssessmentSubmissionIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    student = _owned_student(db, student_id=student_id, user=user)
+    enrollment = _active_pilot(db, student_id=student.id)
+    if enrollment is None:
+        raise HTTPException(status_code=404, detail="Pilot enrollment not found")
+    try:
+        submit_pilot_assessment_response(
+            db,
+            enrollment_id=enrollment.id,
+            question_id=payload.question_id,
+            candidate=payload.candidate,
+            now=datetime.now(UTC).replace(tzinfo=None),
+        )
+        db.commit()
+    except (
+        PilotAssessmentQuestionMismatch,
+        PilotAssessmentUnavailable,
+        PilotAssessmentStateError,
+        PilotAssessmentConfigurationError,
+        PilotAssessmentNotFound,
+    ) as error:
+        raise _assessment_error(db, error) from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
