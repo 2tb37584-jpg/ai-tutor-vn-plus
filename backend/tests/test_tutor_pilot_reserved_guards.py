@@ -22,7 +22,12 @@ from app.schemas.tutor import (
 )
 from app.services.pilot_reserved_questions import PilotReservedQuestionStateError
 from app.services.question_bank import get_question
-from app.services.verifier import VerificationResult, VerificationStatus
+from app.services.verifier import (
+    NumericVerificationRequest,
+    ProblemFamily,
+    VerificationResult,
+    VerificationStatus,
+)
 
 
 class FakeAI:
@@ -110,8 +115,8 @@ def add_active_assignments(db: Session) -> None:
     "reserved_id",
     [
         "g8alg.factorization.001",
-        "learning.0",
-        "post.0",
+        "g8alg.factorization.002",
+        "g8alg.factorization.003",
     ],
 )
 def test_authored_start_rejects_each_reserved_role(
@@ -267,7 +272,11 @@ def test_transfer_and_recommendation_share_persisted_exclusions(
     monkeypatch.setattr(
         tutor_api,
         "_transfer_verification_request_for_session",
-        lambda *_args: object(),
+        lambda *_args: NumericVerificationRequest(
+            family=ProblemFamily.NUMERIC,
+            expected="1",
+            candidate="1",
+        ),
     )
     monkeypatch.setattr(
         tutor_api,
@@ -401,7 +410,15 @@ def test_recommendation_for_non_pilot_receives_empty_exclusions(
         "get_active_pilot_reserved_question_ids",
         lambda *_args, **_kwargs: (),
     )
-    monkeypatch.setattr(tutor_api, "_transfer_verification_request_for_session", lambda *_args: object())
+    monkeypatch.setattr(
+        tutor_api,
+        "_transfer_verification_request_for_session",
+        lambda *_args: NumericVerificationRequest(
+            family=ProblemFamily.NUMERIC,
+            expected="1",
+            candidate="1",
+        ),
+    )
     monkeypatch.setattr(
         tutor_api,
         "verify",
