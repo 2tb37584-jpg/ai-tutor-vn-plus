@@ -282,11 +282,17 @@ def test_missing_or_mismatched_next_question_fails_closed_before_mutation(
     question_result: str | None,
 ) -> None:
     _, rows, session = _pilot(db)
-    if question_result == "wrong_skill":
-        monkeypatch.setattr(
-            pilot_intervention,
-            "get_question",
-            lambda question_id: QuestionBankItem(
+    real_get_question = pilot_intervention.get_question
+    current_transfer_id = session.transfer_question_id
+    next_learning_id = rows[1].learning_question_id
+
+    def fake_get_question(question_id: str) -> QuestionBankItem | None:
+        if question_id == current_transfer_id:
+            return real_get_question(question_id)
+        if question_id == next_learning_id:
+            if question_result is None:
+                return None
+            return QuestionBankItem(
                 id=question_id,
                 skill_code="incorrect.skill",
                 problem_text="synthetic",
@@ -294,10 +300,10 @@ def test_missing_or_mismatched_next_question_fails_closed_before_mutation(
                 expected_answer="hidden",
                 verification_family="numeric",
                 difficulty=1,
-            ),
-        )
-    else:
-        monkeypatch.setattr(pilot_intervention, "get_question", lambda _question_id: None)
+            )
+        return real_get_question(question_id)
+
+    monkeypatch.setattr(pilot_intervention, "get_question", fake_get_question)
 
     with pytest.raises(pilot_intervention.PilotInterventionConfigurationError):
         pilot_intervention.complete_pilot_learning_assignment(

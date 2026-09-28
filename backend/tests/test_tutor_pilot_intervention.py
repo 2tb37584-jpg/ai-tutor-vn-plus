@@ -537,15 +537,16 @@ def test_stale_duplicate_after_ninth_completion_fails_before_ai_or_message(
     monkeypatch.setattr(tutor_api, "ai", ai)
     _silence_mastery(monkeypatch)
 
-    first_response = _reply(db, user, session_a, "(2*x+1)*(x+3)")
+    first_response = _reply(db, user, session_a, "x != -4")
     completed_at = assignments[8].learning_completed_at
     messages_after_a = db.scalars(select(TutorMessage)).all()
     assert first_response.next_learning_action is None
+    assert first_response.tutor.state is TutorState.COMPLETE
     assert enrollment.phase == "post"
     assert completed_at == _RECEIVED_AT
 
     with pytest.raises(HTTPException) as error:
-        _reply(db, user, session_b, "(2*x+1)*(x+3)")
+        _reply(db, user, session_b, "x != -4")
 
     assert error.value.status_code == 503
     assert error.value.detail == "Pilot learning is temporarily unavailable"
