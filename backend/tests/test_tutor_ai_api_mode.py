@@ -13,10 +13,7 @@ _DEFAULT_RESPONSE_BODY = object()
 
 class RawResponse:
     def __init__(self, body):
-        self.body = body
-
-    def json(self):
-        return self.body
+        self.http_response = SimpleNamespace(json=lambda: body)
 
 
 class ParseRecorder:

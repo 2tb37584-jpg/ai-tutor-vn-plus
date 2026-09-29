@@ -301,7 +301,7 @@ class TutorAI:
                 response_format=expected_model,
             )
             try:
-                content = response.json()["choices"][0]["message"]["content"]
+                content = response.http_response.json()["choices"][0]["message"]["content"]
             except (AttributeError, IndexError, KeyError, TypeError) as exc:
                 raise RuntimeError(
                     "Chat Completions response did not include expected message content"
