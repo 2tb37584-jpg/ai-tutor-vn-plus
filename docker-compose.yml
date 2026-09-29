@@ -2,18 +2,23 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: aitutor
-      POSTGRES_USER: aitutor
-      POSTGRES_PASSWORD: aitutor
+      POSTGRES_DB: ${POSTGRES_DB:-aitutor}
+      POSTGRES_USER: ${POSTGRES_USER:-aitutor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-only-change-me}
     ports:
-      - "5432:5432"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aitutor -d aitutor"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+        max-file: ${DOCKER_LOG_MAX_FILES:-3}
 
   backend:
     build: ./backend
@@ -21,32 +26,42 @@ services:
       APP_ENV: ${APP_ENV:-development}
       APP_SECRET: ${APP_SECRET:-dev-secret-change-me}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://aitutor:aitutor@db:5432/aitutor}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://${POSTGRES_USER:-aitutor}:${POSTGRES_PASSWORD:-local-dev-only-change-me}@db:5432/${POSTGRES_DB:-aitutor}}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_MODE: ${OPENAI_API_MODE:-responses}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-terra}
       OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-low}
     ports:
-      - "8000:8000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:8000:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend:/app
+    logging:
+      driver: json-file
+      options:
+        max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+        max-file: ${DOCKER_LOG_MAX_FILES:-3}
 
   frontend:
     build: ./frontend
     environment:
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     ports:
-      - "3000:3000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    logging:
+      driver: json-file
+      options:
+        max-size: ${DOCKER_LOG_MAX_SIZE:-10m}
+        max-file: ${DOCKER_LOG_MAX_FILES:-3}
 
 volumes:
   postgres_data:
