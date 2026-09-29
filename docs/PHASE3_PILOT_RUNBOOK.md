@@ -36,7 +36,9 @@ Before enrollment, privately assign at least a Pilot owner, Pilot support operat
 
 ## 3. Dedicated deployment and clean database — hard gate
 
-The cohort must run in a dedicated pilot deployment/environment with a dedicated pilot database. Before the first real enrollment, verify and privately record all of the following are zero:
+The cohort must run in a dedicated pilot deployment/environment with a dedicated real-pilot database. Normally, the mandatory synthetic browser dry-run uses a separate synthetic-only database, never the intended real-pilot database. The synthetic database must never later be reused as the real cohort database; it may be destroyed after the dry-run.
+
+After the final synthetic dry-run passes, independently verify and privately record that the intended real-pilot database contains zero:
 
 - pre-existing `PilotEnrollment` records;
 - synthetic/test learner records;
@@ -44,7 +46,9 @@ The cohort must run in a dedicated pilot deployment/environment with a dedicated
 
 M09-38 currently selects every persisted `PilotEnrollment` and has no cohort filter, date filter, or student filter. Therefore a shared or historical database can contaminate aggregate measurement. Do not work around this in M09-40 by changing M09-38.
 
-If a clean isolated pilot database cannot be provided: **NO-GO; M09-41 must not start.**
+This clean-state verification must happen after the final synthetic dry-run and before readiness GO review or any real participant account creation/enrollment. If a clean isolated real-pilot database cannot be provided: **NO-GO; M09-41 must not start.**
+
+If there is a concrete reason to run the synthetic dry-run against the intended real-pilot database, then after the dry-run and before any real account creation/enrollment, destroy and recreate that datastore or use another reviewed complete-reset procedure. The reset must remove all synthetic cohort/application state that could affect the real cohort, not merely delete a `PilotEnrollment` row. Re-run and privately record the full clean-state verification after the reset. If a complete verified reset/recreation cannot be performed: **NO-GO**. The synthetic database must not be repurposed as the real cohort database.
 
 ## 4. Deployment and version pinning
 
@@ -59,15 +63,21 @@ The deployed build must correspond to reviewed `main`. Do not run a real cohort 
 
 ## 5. Required technical preflight
 
-Before real enrollment, all must be true:
+Before real enrollment, all must be true, in this order:
 
 - M09-39 is DONE;
 - M10-05 is DONE and its UI is merged;
 - this M09-40 runbook is approved;
 - current `main` CI is green;
 - pilot deployment uses the reviewed `main` commit;
-- pilot database is clean and isolated as defined above;
+- final synthetic browser dry-run has passed using a separate synthetic-only database, or the intended pilot datastore has undergone the complete reviewed reset/recreation fallback;
+- after that final dry-run (and fallback reset, if used), the real-pilot database has been independently verified clean and isolated as defined above;
+- readiness GO review is complete;
 - required secrets are configured, and secret values are not copied into this runbook or evidence.
+
+For the preferred path the gate order is: reviewed release deployed → synthetic browser dry-run using the separate synthetic-only database → dry-run PASS → real-pilot database clean-state verification → readiness GO review → only then real participant account creation/enrollment.
+
+For the fallback path the order is: dry-run on intended real-pilot database → complete datastore reset/recreation → clean-state verification → readiness GO review → real enrollment.
 
 M09-39 synthetic deterministic E2E is backend lifecycle evidence. M10-05 is UI integration evidence. Neither substitutes for the manual synthetic browser dry-run below.
 
@@ -185,7 +195,7 @@ If the same item repeatedly cannot be deterministically scored, pause that parti
 
 ## 15. Mandatory synthetic browser dry-run
 
-Before each real cohort, run one complete synthetic pilot on the exact release candidate/deployment, using synthetic-only user/student data. Exercise the visible UI through:
+Before each real cohort, run one complete synthetic pilot on the exact reviewed release candidate/deployment, using the same reviewed release commit/build, relevant runtime configuration, and application code intended for the real cohort, but a **separate synthetic-only dry-run database**. Never reuse that dry-run database as the real cohort database. Exercise the visible UI through:
 
 `no pilot → explicit enrollment → all PRE items → intervention → all nine pilot learning sessions → POST → COMPLETE`
 
@@ -201,7 +211,7 @@ Verify at minimum:
 - POST appears only after intervention completion;
 - COMPLETE wording is neutral.
 
-After completion, run the real aggregate-report command against the synthetic isolated database and verify it succeeds with synthetic-only evidence. If this browser dry-run fails: **NO-GO; do not enroll real participants.** M09-40 defines the gate; it does not execute or claim the dry-run has passed.
+After completion, run the real aggregate-report command against the synthetic isolated database and verify it succeeds with synthetic-only evidence. Then verify the intended real-pilot database is still independently clean, after this final dry-run. If the intended real-pilot database was used for the dry-run, perform the complete reviewed reset/recreation fallback first and then repeat clean-state verification. Do not define a complete reset as deleting a single `PilotEnrollment` row manually. If synthetic state remains or complete reset cannot be verified: **NO-GO**. If this browser dry-run fails: **NO-GO; do not enroll real participants.** M09-40 defines the gate; it does not execute or claim the dry-run has passed.
 
 ## 16. Incident and rollback policy
 
@@ -209,7 +219,7 @@ After completion, run the real aggregate-report command against the synthetic is
 
 Examples include answer leakage, wrong participant/student state shown, frozen PRE/POST item exposed through tutoring, verifier authority bypass, inconsistent assignment provenance, unexpected learner-data exposure, or database cohort contamination.
 
-Immediately stop new enrollment and pause the real pilot cohort. Do not manually repair learner phase/status, edit assessment results, or continue measurement. Capture only minimal incident metadata: time, deployment commit, phase, non-identifying participant code if needed, and generic failure description. Do not copy raw chat, answers, or PII into GitHub.
+If synthetic/test pilot state is discovered in the intended real-pilot database before the first real enrollment, the decision is **NO-GO**; do not create real participant accounts or enroll anyone. If discovered after real enrollment begins, treat it as a database cohort-contamination incident: immediately stop new enrollment, pause the cohort, do not run or continue measurement, and require ChatGPT readiness re-review. Do not manually repair learner phase/status, edit assessment results, or continue measurement. Capture only minimal incident metadata: time, deployment commit, phase, non-identifying participant code if needed, and generic failure description. Do not copy raw chat, answers, or PII into GitHub.
 
 Resume only after a reviewed fix, required regressions passing, the full synthetic browser dry-run passing again, and ChatGPT readiness re-review.
 
@@ -248,7 +258,8 @@ A human must complete a private readiness record and ChatGPT must review its evi
 [ ] reviewed main deployed
 [ ] CI green
 [ ] dedicated pilot environment confirmed
-[ ] pilot database confirmed clean
+[ ] synthetic dry-run data store is separate from the real cohort database OR the intended pilot datastore was fully reset/recreated after dry-run
+[ ] real cohort database was verified clean AFTER the final synthetic dry-run (and after any fallback reset/recreation)
 [ ] backup/log retention confirmed
 [ ] deletion mechanism confirmed
 
