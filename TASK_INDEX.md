@@ -117,7 +117,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-37 | Evals | Project persisted pilot assessment state into M09-22 records | DONE | Yes, small |
 | M09-38 | Evals | Add aggregate pilot measurement report command | DONE | Yes, small |
 | M09-39 | Evals | Add deterministic end-to-end pilot lifecycle regression | DONE | Yes, small |
-| M09-40 | Evals | Add real-pilot operations/privacy/readiness runbook | BACKLOG | Mostly ChatGPT |
+| M09-40 | Evals | Add real-pilot operations/privacy/readiness runbook | ACTIVE | Mostly ChatGPT |
 | M09-41 | Evals | Execute real pilot and retain aggregate measurement evidence | BACKLOG | No |
 | M09-42 | Evals | Evaluate Phase 3 exit criterion from real pilot evidence | BACKLOG | Mostly ChatGPT |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
