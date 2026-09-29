@@ -3,20 +3,26 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.tutor import ProblemAnalysis
+from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTurn
 from app.services import tutor_ai
 
 
-class CreateRecorder:
-    def __init__(self, content: object) -> None:
-        self.calls: list[dict] = []
-        self.content = content
+class RawResponse:
+    def __init__(self, body: object) -> None:
+        self.body = body
 
-    def create(self, **kwargs):
+    def json(self) -> object:
+        return self.body
+
+
+class RawParseRecorder:
+    def __init__(self, body: object) -> None:
+        self.calls: list[dict] = []
+        self.body = body
+
+    def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(content=self.content))]
-        )
+        return RawResponse(self.body)
 
 
 class ResponsesRecorder:
@@ -29,9 +35,27 @@ class ResponsesRecorder:
         return SimpleNamespace(output_parsed=self.parsed)
 
 
-def _tutor(mode: str, *, content: object = None, responses_parsed=None):
-    completions = CreateRecorder(content)
+_MISSING = object()
+
+
+def _tutor(
+    mode: str,
+    *,
+    content: object = _MISSING,
+    response_body: object = _MISSING,
+    responses_parsed=None,
+):
+    if response_body is _MISSING:
+        if content is _MISSING:
+            response_body = {}
+        else:
+            response_body = {"choices": [{"message": {"content": content}}]}
+
+    raw_parse = RawParseRecorder(response_body)
     responses = ResponsesRecorder(responses_parsed)
+    completions = SimpleNamespace(
+        with_raw_response=SimpleNamespace(parse=raw_parse.parse),
+    )
     instance = tutor_ai.TutorAI.__new__(tutor_ai.TutorAI)
     instance.settings = SimpleNamespace(
         openai_api_mode=mode,
@@ -41,7 +65,7 @@ def _tutor(mode: str, *, content: object = None, responses_parsed=None):
         responses=responses,
         chat=SimpleNamespace(completions=completions),
     )
-    return instance, responses, completions
+    return instance, responses, raw_parse
 
 
 def _analysis_json() -> str:
@@ -52,20 +76,21 @@ def _analysis_json() -> str:
     ).model_dump_json()
 
 
-def test_chat_completions_raw_json_uses_one_structured_request():
-    instance, responses, completions = _tutor("chat_completions", content=_analysis_json())
+def _run_analysis(instance: tutor_ai.TutorAI) -> ProblemAnalysis:
+    return instance.analyze_problem("Solve x + 1 = 2")
 
-    result = instance.analyze_problem("Solve x + 1 = 2")
+
+def test_chat_completions_raw_json_uses_one_public_structured_request():
+    instance, responses, raw_parse = _tutor("chat_completions", content=_analysis_json())
+
+    result = _run_analysis(instance)
 
     assert result.normalized_problem == "Solve x + 1 = 2"
     assert result.skills == ["algebra.linear_equation"]
     assert responses.calls == []
-    assert len(completions.calls) == 1
-    response_format = completions.calls[0]["response_format"]
-    assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["name"] == "ProblemAnalysis"
-    assert response_format["json_schema"]["strict"] is True
-    assert response_format["json_schema"]["schema"]["additionalProperties"] is False
+    assert len(raw_parse.calls) == 1
+    assert raw_parse.calls[0]["response_format"] is ProblemAnalysis
+    assert raw_parse.calls[0]["model"] == "test-model"
 
 
 @pytest.mark.parametrize(
@@ -77,12 +102,12 @@ def test_chat_completions_raw_json_uses_one_structured_request():
     ],
 )
 def test_chat_completions_accepts_one_complete_outer_json_fence(content: str):
-    instance, _, completions = _tutor("chat_completions", content=content)
+    instance, _, raw_parse = _tutor("chat_completions", content=content)
 
-    result = instance.analyze_problem("Solve x + 1 = 2")
+    result = _run_analysis(instance)
 
     assert result.normalized_problem == "Solve x + 1 = 2"
-    assert len(completions.calls) == 1
+    assert len(raw_parse.calls) == 1
 
 
 @pytest.mark.parametrize(
@@ -91,34 +116,71 @@ def test_chat_completions_accepts_one_complete_outer_json_fence(content: str):
         "not json",
         "Here is the result:\n" + _analysis_json(),
         "```json\n" + _analysis_json() + "\n```\nExtra explanation",
+        "```json\n" + _analysis_json() + "\n",
+        "```json " + _analysis_json() + " ```",
         '{"subject":"math"}',
     ],
 )
 def test_chat_completions_invalid_or_untrusted_content_fails_closed(content: str):
-    instance, _, completions = _tutor("chat_completions", content=content)
+    instance, _, raw_parse = _tutor("chat_completions", content=content)
 
     with pytest.raises(ValidationError):
-        instance.analyze_problem("Solve x + 1 = 2")
+        _run_analysis(instance)
 
-    assert len(completions.calls) == 1
+    assert len(raw_parse.calls) == 1
 
 
-@pytest.mark.parametrize("content", [None, "", "   "])
-def test_chat_completions_empty_content_fails_closed(content: object):
-    instance, _, completions = _tutor("chat_completions", content=content)
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"choices": []},
+        {"choices": [{"message": {}}]},
+        {"choices": [{"message": {"content": None}}]},
+        {"choices": [{"message": {"content": ""}}]},
+        {"choices": [{"message": {"content": "   "}}]},
+    ],
+)
+def test_chat_completions_missing_or_empty_content_fails_closed(body: object):
+    instance, _, raw_parse = _tutor("chat_completions", response_body=body)
 
-    with pytest.raises(RuntimeError, match="did not include structured content"):
-        instance.analyze_problem("Solve x + 1 = 2")
+    with pytest.raises(RuntimeError, match="Chat Completions response did not include"):
+        _run_analysis(instance)
 
-    assert len(completions.calls) == 1
+    assert len(raw_parse.calls) == 1
+
+
+def test_fenced_tutor_turn_fields_are_validated_and_preserved():
+    expected = TutorTurn(
+        message="Hãy kiểm tra bước biến đổi tiếp theo.",
+        state=TutorState.VERIFY,
+        likely_correct=False,
+        reveal_final_answer=True,
+    )
+    content = f"```json\n{expected.model_dump_json()}\n```"
+    instance, responses, raw_parse = _tutor("chat_completions", content=content)
+
+    result = instance._parse_structured(
+        TutorTurn,
+        responses_input=[],
+        chat_messages=[],
+    )
+
+    assert result.message == expected.message
+    assert result.state is TutorState.VERIFY
+    assert result.likely_correct is False
+    assert result.reveal_final_answer is True
+    assert responses.calls == []
+    assert len(raw_parse.calls) == 1
+    assert raw_parse.calls[0]["response_format"] is TutorTurn
 
 
 def test_responses_mode_remains_on_sdk_parse_path():
     expected = ProblemAnalysis(normalized_problem="Solve x + 1 = 2")
-    instance, responses, completions = _tutor("responses", responses_parsed=expected)
+    instance, responses, raw_parse = _tutor("responses", responses_parsed=expected)
 
-    result = instance.analyze_problem("Solve x + 1 = 2")
+    result = _run_analysis(instance)
 
     assert result is expected
     assert len(responses.calls) == 1
-    assert completions.calls == []
+    assert raw_parse.calls == []

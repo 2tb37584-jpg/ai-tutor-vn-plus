@@ -2,7 +2,6 @@ from __future__ import annotations
 from typing import Any, TypeVar
 
 from openai import OpenAI
-from openai.lib._parsing._completions import type_to_response_format_param
 from app.core.config import get_settings
 from app.schemas.tutor import (
     ProblemAnalysis,
@@ -296,25 +295,17 @@ class TutorAI:
             return response.output_parsed
 
         if api_mode == "chat_completions":
-            completions = self.client.chat.completions
-            create = getattr(completions, "create", None)
-            if create is None:
-                response = completions.parse(
-                    model=self.settings.openai_model,
-                    messages=chat_messages,
-                    response_format=expected_model,
-                )
-                parsed = response.choices[0].message.parsed
-                if parsed is None:
-                    raise RuntimeError("Chat Completions response did not include parsed output")
-                return parsed
-
-            response = create(
+            response = self.client.chat.completions.with_raw_response.parse(
                 model=self.settings.openai_model,
                 messages=chat_messages,
-                response_format=type_to_response_format_param(expected_model),
+                response_format=expected_model,
             )
-            content = response.choices[0].message.content
+            try:
+                content = response.json()["choices"][0]["message"]["content"]
+            except (AttributeError, IndexError, KeyError, TypeError) as exc:
+                raise RuntimeError(
+                    "Chat Completions response did not include expected message content"
+                ) from exc
             if not isinstance(content, str) or not content.strip():
                 raise RuntimeError("Chat Completions response did not include structured content")
             return expected_model.model_validate_json(self._strip_outer_json_fence(content))
