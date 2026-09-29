@@ -125,7 +125,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M10-02B | UI | Student attempt + hint controls | DONE | Yes |
 | M10-03 | UI | Render post-completion next learning action | DONE | Yes, small |
 | M10-04 | UI | Start recommended authored question from UI | DONE | Yes, small |
-| M10-05 | UI | Add minimal pilot PRE to learning to POST UI | BACKLOG | Yes, small |
+| M10-05 | UI | Add minimal pilot PRE to learning to POST UI | ACTIVE | Yes, small |
 
 ## Current recommended sequence
 1. M00-01
