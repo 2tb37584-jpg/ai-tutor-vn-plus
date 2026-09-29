@@ -8,24 +8,57 @@ from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTurn
 from app.services import tutor_ai
 
 
+_DEFAULT_RESPONSE_BODY = object()
+
+
+class RawResponse:
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
 class ParseRecorder:
-    def __init__(self, parsed, *, output_style: str):
+    def __init__(
+        self,
+        parsed,
+        *,
+        output_style: str,
+        response_body=_DEFAULT_RESPONSE_BODY,
+    ):
         self.calls = []
         self.parsed = parsed
         self.output_style = output_style
+        self.response_body = response_body
+        if output_style == "chat":
+            self.with_raw_response = SimpleNamespace(parse=self.parse_raw)
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        if self.output_style == "responses":
-            return SimpleNamespace(output_parsed=self.parsed)
-        return SimpleNamespace(
-            choices=[SimpleNamespace(message=SimpleNamespace(parsed=self.parsed))]
-        )
+        return SimpleNamespace(output_parsed=self.parsed)
+
+    def parse_raw(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.response_body is not _DEFAULT_RESPONSE_BODY:
+            return RawResponse(self.response_body)
+        content = self.parsed.model_dump_json() if self.parsed is not None else None
+        return RawResponse({"choices": [{"message": {"content": content}}]})
 
 
-def _tutor(mode: str, *, responses_parsed=None, chat_parsed=None):
+def _tutor(
+    mode: str,
+    *,
+    responses_parsed=None,
+    chat_parsed=None,
+    chat_response_body=_DEFAULT_RESPONSE_BODY,
+):
     responses = ParseRecorder(responses_parsed, output_style="responses")
-    chat_completions = ParseRecorder(chat_parsed, output_style="chat")
+    chat_completions = ParseRecorder(
+        chat_parsed,
+        output_style="chat",
+        response_body=chat_response_body,
+    )
     tutor = tutor_ai.TutorAI.__new__(tutor_ai.TutorAI)
     tutor.settings = SimpleNamespace(
         openai_api_mode=mode,
@@ -73,7 +106,7 @@ def test_chat_completions_mode_returns_parsed_problem_analysis():
 
     result = tutor.analyze_problem("Solve x + 1 = 2")
 
-    assert result is expected
+    assert result == expected
     assert isinstance(result, ProblemAnalysis)
     assert responses.calls == []
     assert len(chat_completions.calls) == 1
@@ -169,11 +202,33 @@ def test_responses_image_transport_remains_unchanged():
     ]
 
 
-def test_missing_chat_completions_parsed_output_fails_explicitly():
-    tutor, _, _ = _tutor("chat_completions", chat_parsed=None)
+@pytest.mark.parametrize(
+    ("response_body", "message"),
+    [
+        ({"choices": [{"message": {}}]}, "expected message content"),
+        (
+            {"choices": [{"message": {"content": None}}]},
+            "did not include structured content",
+        ),
+        (
+            {"choices": [{"message": {"content": ""}}]},
+            "did not include structured content",
+        ),
+    ],
+)
+def test_missing_or_empty_chat_completions_content_fails_explicitly(
+    response_body,
+    message,
+):
+    tutor, _, chat_completions = _tutor(
+        "chat_completions",
+        chat_response_body=response_body,
+    )
 
-    with pytest.raises(RuntimeError, match="did not include parsed output"):
+    with pytest.raises(RuntimeError, match=message):
         tutor.first_turn(_analysis(), grade=8)
+
+    assert len(chat_completions.calls) == 1
 
 
 def test_custom_base_url_construction_remains_unchanged(monkeypatch):

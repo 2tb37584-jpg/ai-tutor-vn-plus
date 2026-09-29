@@ -5,19 +5,30 @@ from app.services import tutor_ai
 from app.services.skill_registry import get_controlled_skills
 
 
+class RawResponse:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+    def json(self) -> dict[str, list[dict[str, dict[str, str]]]]:
+        return {"choices": [{"message": {"content": self.content}}]}
+
+
 class ParseRecorder:
     def __init__(self, *, chat_completions: bool) -> None:
         self.calls: list[dict[str, object]] = []
         self.chat_completions = chat_completions
+        if chat_completions:
+            self.with_raw_response = SimpleNamespace(parse=self.parse_raw)
 
     def parse(self, **kwargs: object) -> SimpleNamespace:
         self.calls.append(kwargs)
         parsed = ProblemAnalysis(normalized_problem="Solve x + 1 = 2")
-        if self.chat_completions:
-            return SimpleNamespace(
-                choices=[SimpleNamespace(message=SimpleNamespace(parsed=parsed))]
-            )
         return SimpleNamespace(output_parsed=parsed)
+
+    def parse_raw(self, **kwargs: object) -> RawResponse:
+        self.calls.append(kwargs)
+        parsed = ProblemAnalysis(normalized_problem="Solve x + 1 = 2")
+        return RawResponse(parsed.model_dump_json())
 
 
 def _tutor(mode: str) -> tuple[tutor_ai.TutorAI, ParseRecorder, ParseRecorder]:

@@ -49,6 +49,8 @@ _STATE_HINT_LEVELS = {
 
 _ATTEMPT_STATES = frozenset({TutorState.ASK_ATTEMPT, TutorState.HINT_1, TutorState.HINT_2})
 
+_JSON_CODE_FENCE_OPENERS = frozenset({"```", "```json"})
+
 _ATTEMPT_RESPONSE_POLICY = (
     "First judge the student's newest attempt when it can reasonably be judged. "
     "If it is clearly correct, set likely_correct=True; do not escalate the hint or explain "
@@ -293,17 +295,34 @@ class TutorAI:
             return response.output_parsed
 
         if api_mode == "chat_completions":
-            response = self.client.chat.completions.parse(
+            response = self.client.chat.completions.with_raw_response.parse(
                 model=self.settings.openai_model,
                 messages=chat_messages,
                 response_format=expected_model,
             )
-            parsed = response.choices[0].message.parsed
-            if parsed is None:
-                raise RuntimeError("Chat Completions response did not include parsed output")
-            return parsed
+            try:
+                content = response.json()["choices"][0]["message"]["content"]
+            except (AttributeError, IndexError, KeyError, TypeError) as exc:
+                raise RuntimeError(
+                    "Chat Completions response did not include expected message content"
+                ) from exc
+            if not isinstance(content, str) or not content.strip():
+                raise RuntimeError("Chat Completions response did not include structured content")
+            return expected_model.model_validate_json(self._strip_outer_json_fence(content))
 
         raise ValueError(f"Unsupported OpenAI API mode: {api_mode}")
+
+    @staticmethod
+    def _strip_outer_json_fence(content: str) -> str:
+        stripped = content.strip()
+        lines = stripped.splitlines()
+        if (
+            len(lines) >= 3
+            and lines[0].strip().lower() in _JSON_CODE_FENCE_OPENERS
+            and lines[-1].strip() == "```"
+        ):
+            return "\n".join(lines[1:-1]).strip()
+        return stripped
 
     @staticmethod
     def _with_first_turn_state(turn: TutorTurn) -> TutorTurn:
