@@ -120,7 +120,7 @@ Status values: BACKLOG / READY / ACTIVE / BLOCKED / REVIEW / DONE.
 | M09-40 | Evals | Add real-pilot operations/privacy/readiness runbook | DONE | Mostly ChatGPT |
 | M09-40A | Baseline | Harden local pilot runtime isolation and log handling | DONE | Yes, small |
 | M09-40B | Tutor Engine | Harden chat-completions structured parsing for fenced JSON | DONE | Yes, small |
-| M09-40C | Tutor Engine | Fix LegacyAPIResponse raw-body access for structured chat completions | ACTIVE | Yes, small |
+| M09-40C | Tutor Engine | Fix LegacyAPIResponse raw-body access for structured chat completions | DONE | Yes, small |
 | M09-41 | Evals | Execute real pilot and retain aggregate measurement evidence | BACKLOG | No |
 | M09-42 | Evals | Evaluate Phase 3 exit criterion from real pilot evidence | BACKLOG | Mostly ChatGPT |
 | M10-01 | UI | Tutor conversation shell | DONE | Yes |
