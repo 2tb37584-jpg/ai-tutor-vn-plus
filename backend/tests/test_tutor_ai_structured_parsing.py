@@ -7,22 +7,32 @@ from app.schemas.tutor import ProblemAnalysis, TutorState, TutorTurn
 from app.services import tutor_ai
 
 
-class RawResponse:
+class RawHTTPResponse:
     def __init__(self, body: object) -> None:
         self.body = body
+        self.json_calls = 0
 
     def json(self) -> object:
+        self.json_calls += 1
         return self.body
+
+
+class LegacyAPIResponse:
+    def __init__(self, body: object) -> None:
+        self.http_response = RawHTTPResponse(body)
 
 
 class RawParseRecorder:
     def __init__(self, body: object) -> None:
         self.calls: list[dict] = []
         self.body = body
+        self.responses: list[LegacyAPIResponse] = []
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
-        return RawResponse(self.body)
+        response = LegacyAPIResponse(self.body)
+        self.responses.append(response)
+        return response
 
 
 class ResponsesRecorder:
@@ -91,6 +101,18 @@ def test_chat_completions_raw_json_uses_one_public_structured_request():
     assert len(raw_parse.calls) == 1
     assert raw_parse.calls[0]["response_format"] is ProblemAnalysis
     assert raw_parse.calls[0]["model"] == "test-model"
+
+
+def test_chat_completions_reads_legacy_raw_http_response_body():
+    instance, _, raw_parse = _tutor("chat_completions", content=_analysis_json())
+
+    result = _run_analysis(instance)
+
+    response = raw_parse.responses[0]
+    assert not hasattr(response, "json")
+    assert response.http_response.json_calls == 1
+    assert result.normalized_problem == "Solve x + 1 = 2"
+    assert len(raw_parse.calls) == 1
 
 
 @pytest.mark.parametrize(

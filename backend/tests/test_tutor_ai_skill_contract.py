@@ -7,10 +7,8 @@ from app.services.skill_registry import get_controlled_skills
 
 class RawResponse:
     def __init__(self, content: str) -> None:
-        self.content = content
-
-    def json(self) -> dict[str, list[dict[str, dict[str, str]]]]:
-        return {"choices": [{"message": {"content": self.content}}]}
+        body = {"choices": [{"message": {"content": content}}]}
+        self.http_response = SimpleNamespace(json=lambda: body)
 
 
 class ParseRecorder:
