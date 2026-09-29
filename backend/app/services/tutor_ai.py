@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import Any, TypeVar
 
 from openai import OpenAI
+from openai.lib._parsing._completions import type_to_response_format_param
 from app.core.config import get_settings
 from app.schemas.tutor import (
     ProblemAnalysis,
@@ -48,6 +49,8 @@ _STATE_HINT_LEVELS = {
 }
 
 _ATTEMPT_STATES = frozenset({TutorState.ASK_ATTEMPT, TutorState.HINT_1, TutorState.HINT_2})
+
+_JSON_CODE_FENCE_OPENERS = frozenset({"```", "```json"})
 
 _ATTEMPT_RESPONSE_POLICY = (
     "First judge the student's newest attempt when it can reasonably be judged. "
@@ -293,17 +296,42 @@ class TutorAI:
             return response.output_parsed
 
         if api_mode == "chat_completions":
-            response = self.client.chat.completions.parse(
+            completions = self.client.chat.completions
+            create = getattr(completions, "create", None)
+            if create is None:
+                response = completions.parse(
+                    model=self.settings.openai_model,
+                    messages=chat_messages,
+                    response_format=expected_model,
+                )
+                parsed = response.choices[0].message.parsed
+                if parsed is None:
+                    raise RuntimeError("Chat Completions response did not include parsed output")
+                return parsed
+
+            response = create(
                 model=self.settings.openai_model,
                 messages=chat_messages,
-                response_format=expected_model,
+                response_format=type_to_response_format_param(expected_model),
             )
-            parsed = response.choices[0].message.parsed
-            if parsed is None:
-                raise RuntimeError("Chat Completions response did not include parsed output")
-            return parsed
+            content = response.choices[0].message.content
+            if not isinstance(content, str) or not content.strip():
+                raise RuntimeError("Chat Completions response did not include structured content")
+            return expected_model.model_validate_json(self._strip_outer_json_fence(content))
 
         raise ValueError(f"Unsupported OpenAI API mode: {api_mode}")
+
+    @staticmethod
+    def _strip_outer_json_fence(content: str) -> str:
+        stripped = content.strip()
+        lines = stripped.splitlines()
+        if (
+            len(lines) >= 3
+            and lines[0].strip().lower() in _JSON_CODE_FENCE_OPENERS
+            and lines[-1].strip() == "```"
+        ):
+            return "\n".join(lines[1:-1]).strip()
+        return stripped
 
     @staticmethod
     def _with_first_turn_state(turn: TutorTurn) -> TutorTurn:
